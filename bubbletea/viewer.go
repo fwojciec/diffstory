@@ -149,14 +149,63 @@ func (m Model) View() string {
 
 // statusBarView renders the status bar with position info.
 func (m Model) statusBarView() string {
+	// Styles for status bar components
+	barStyle := lipgloss.NewStyle().
+		Background(lipgloss.Color("#313244")).
+		Foreground(lipgloss.Color("#cdd6f4"))
+
+	dimStyle := lipgloss.NewStyle().
+		Background(lipgloss.Color("#313244")).
+		Foreground(lipgloss.Color("#6c7086"))
+
+	sepStyle := lipgloss.NewStyle().
+		Background(lipgloss.Color("#313244")).
+		Foreground(lipgloss.Color("#45475a"))
+
+	// Format position info with fixed widths
 	fileIdx, fileTotal := m.currentFilePosition()
 	hunkIdx, hunkTotal := m.currentHunkPosition()
+
+	// Calculate digit widths for consistent formatting
+	fileWidth := digitWidth(fileTotal)
+	hunkWidth := digitWidth(hunkTotal)
+
+	filePos := fmt.Sprintf("file %*d/%-*d", fileWidth, fileIdx, fileWidth, fileTotal)
+	hunkPos := fmt.Sprintf("hunk %*d/%-*d", hunkWidth, hunkIdx, hunkWidth, hunkTotal)
 	scrollPos := m.scrollPosition()
-	keyHints := "j/k:scroll  n/N:hunk  ]/[:file  q:quit"
-	return fmt.Sprintf("file %d/%d  hunk %d/%d  %s  %s", fileIdx, fileTotal, hunkIdx, hunkTotal, scrollPos, keyHints)
+
+	// Build status bar with separators
+	sep := sepStyle.Render(" │ ")
+	content := barStyle.Render(filePos) + sep +
+		barStyle.Render(hunkPos) + sep +
+		barStyle.Render(scrollPos) + sep +
+		dimStyle.Render("j/k:scroll  n/N:hunk  ]/[:file  q:quit") +
+		barStyle.Render("  ") // Right padding
+
+	// Right-align by padding left side with background
+	contentWidth := lipgloss.Width(content)
+	if m.width > contentWidth {
+		padding := barStyle.Render(strings.Repeat(" ", m.width-contentWidth))
+		content = padding + content
+	}
+
+	return content
 }
 
-// scrollPosition returns a string indicating the scroll position.
+// digitWidth returns the number of digits needed to display n.
+func digitWidth(n int) int {
+	if n <= 0 {
+		return 1
+	}
+	width := 0
+	for n > 0 {
+		width++
+		n /= 10
+	}
+	return width
+}
+
+// scrollPosition returns a string indicating the scroll position (always 3 chars).
 func (m Model) scrollPosition() string {
 	if m.viewport.AtTop() {
 		return "Top"
@@ -164,9 +213,9 @@ func (m Model) scrollPosition() string {
 	if m.viewport.AtBottom() {
 		return "Bot"
 	}
-	// Calculate percentage
-	percent := m.viewport.ScrollPercent() * 100
-	return fmt.Sprintf("%d%%", int(percent))
+	// Calculate percentage, format to 3 chars (e.g., " 4%", "50%")
+	percent := int(m.viewport.ScrollPercent() * 100)
+	return fmt.Sprintf("%2d%%", percent)
 }
 
 // currentFilePosition returns the current file index (1-based) and total file count.
