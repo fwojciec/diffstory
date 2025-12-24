@@ -1,3 +1,4 @@
+// Package mock provides test doubles for diffview interfaces.
 package mock
 
 import (
