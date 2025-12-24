@@ -1,0 +1,43 @@
+.PHONY: validate validate-all test integration lint fmt vet tidy help ready
+
+## Primary target - run before completing any task
+validate: fmt vet tidy lint test ## Run all validation checks
+	@echo "✓ All validation checks passed"
+
+## Full validation including integration tests
+validate-all: validate integration ## Run all checks including integration tests
+	@echo "✓ All validation checks passed (including integration)"
+
+## Testing
+test: ## Run tests with race detector
+	go test -race ./...
+
+integration: ## Run integration tests (requires network)
+	go test -race -tags=integration ./...
+
+## Linting
+lint: ## Run golangci-lint
+	golangci-lint run ./...
+
+## Formatting
+fmt: ## Run gofmt
+	@go fmt ./...
+
+## Vet
+vet: ## Run go vet
+	go vet ./...
+
+## Tidy
+tidy: ## Ensure go.mod is tidy
+	@go mod tidy
+
+## Beads workflow
+ready: ## Show tasks with no blockers
+	@bd ready
+
+list: ## List all beads tasks
+	@bd list
+
+## Help
+help: ## Show this help
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'
