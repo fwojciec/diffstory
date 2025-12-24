@@ -23,6 +23,7 @@ type Model struct {
 	pendingKey    string
 	hunkPositions []int // line numbers where each hunk starts
 	filePositions []int // line numbers where each file starts
+	width         int   // terminal width for status bar
 }
 
 // NewModel creates a new Model with the given diff and default dark theme.
@@ -121,13 +122,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		statusBarHeight := 1
 		if !m.ready {
-			m.viewport = viewport.New(msg.Width, msg.Height)
+			m.viewport = viewport.New(msg.Width, msg.Height-statusBarHeight)
 			m.viewport.SetContent(m.content)
 			m.ready = true
 		} else {
 			m.viewport.Width = msg.Width
-			m.viewport.Height = msg.Height
+			m.viewport.Height = msg.Height - statusBarHeight
 		}
 	}
 
@@ -141,7 +144,122 @@ func (m Model) View() string {
 	if !m.ready {
 		return "Loading..."
 	}
-	return m.viewport.View()
+	return lipgloss.JoinVertical(lipgloss.Left, m.viewport.View(), m.statusBarView())
+}
+
+// statusBarView renders the status bar with position info.
+func (m Model) statusBarView() string {
+	// Styles for status bar components
+	barStyle := lipgloss.NewStyle().
+		Background(lipgloss.Color("#313244")).
+		Foreground(lipgloss.Color("#cdd6f4"))
+
+	dimStyle := lipgloss.NewStyle().
+		Background(lipgloss.Color("#313244")).
+		Foreground(lipgloss.Color("#6c7086"))
+
+	sepStyle := lipgloss.NewStyle().
+		Background(lipgloss.Color("#313244")).
+		Foreground(lipgloss.Color("#45475a"))
+
+	// Format position info with fixed widths
+	fileIdx, fileTotal := m.currentFilePosition()
+	hunkIdx, hunkTotal := m.currentHunkPosition()
+
+	// Calculate digit widths for consistent formatting
+	fileWidth := digitWidth(fileTotal)
+	hunkWidth := digitWidth(hunkTotal)
+
+	filePos := fmt.Sprintf("file %*d/%-*d", fileWidth, fileIdx, fileWidth, fileTotal)
+	hunkPos := fmt.Sprintf("hunk %*d/%-*d", hunkWidth, hunkIdx, hunkWidth, hunkTotal)
+	scrollPos := m.scrollPosition()
+
+	// Build status bar with separators
+	sep := sepStyle.Render(" │ ")
+	content := barStyle.Render(filePos) + sep +
+		barStyle.Render(hunkPos) + sep +
+		barStyle.Render(scrollPos) + sep +
+		dimStyle.Render("j/k:scroll  n/N:hunk  ]/[:file  q:quit") +
+		barStyle.Render("  ") // Right padding
+
+	// Right-align by padding left side with background
+	contentWidth := lipgloss.Width(content)
+	if m.width > contentWidth {
+		padding := barStyle.Render(strings.Repeat(" ", m.width-contentWidth))
+		content = padding + content
+	}
+
+	return content
+}
+
+// digitWidth returns the number of digits needed to display n.
+func digitWidth(n int) int {
+	if n <= 0 {
+		return 1
+	}
+	width := 0
+	for n > 0 {
+		width++
+		n /= 10
+	}
+	return width
+}
+
+// scrollPosition returns a string indicating the scroll position (always 3 chars).
+func (m Model) scrollPosition() string {
+	if m.viewport.AtTop() {
+		return "Top"
+	}
+	if m.viewport.AtBottom() {
+		return "Bot"
+	}
+	// Calculate percentage, format to 3 chars (e.g., " 4%", "50%")
+	percent := int(m.viewport.ScrollPercent() * 100)
+	return fmt.Sprintf("%2d%%", percent)
+}
+
+// currentFilePosition returns the current file index (1-based) and total file count.
+func (m Model) currentFilePosition() (current, total int) {
+	total = len(m.filePositions)
+	if total == 0 {
+		return 0, 0
+	}
+
+	currentLine := m.viewport.YOffset
+	current = 1 // Default to first file
+
+	// Find which file we're currently in
+	for i, pos := range m.filePositions {
+		if pos <= currentLine {
+			current = i + 1 // 1-based index
+		} else {
+			break
+		}
+	}
+
+	return current, total
+}
+
+// currentHunkPosition returns the current hunk index (1-based) and total hunk count.
+func (m Model) currentHunkPosition() (current, total int) {
+	total = len(m.hunkPositions)
+	if total == 0 {
+		return 0, 0
+	}
+
+	currentLine := m.viewport.YOffset
+	current = 1 // Default to first hunk
+
+	// Find which hunk we're currently in
+	for i, pos := range m.hunkPositions {
+		if pos <= currentLine {
+			current = i + 1 // 1-based index
+		} else {
+			break
+		}
+	}
+
+	return current, total
 }
 
 // HunkPositions returns the line numbers where each hunk starts.
