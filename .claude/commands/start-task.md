@@ -97,8 +97,7 @@ Only proceed to step 8 when `make validate` passes cleanly.
 
 Before finishing, get a fresh perspective on the implementation:
 
-1. Use `superpowers:requesting-code-review` to dispatch a review subagent
-   - The subagent runs in separate context, providing unbiased review
+1. Use the `code-review:code-review` skill to review the implementation
    - Wait for findings to be returned
 
 2. Use `superpowers:receiving-code-review` to evaluate the feedback
