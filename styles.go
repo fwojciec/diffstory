@@ -15,6 +15,7 @@ type Styles struct {
 	Context          ColorPair // Style for context lines (unchanged)
 	HunkHeader       ColorPair // Style for hunk headers (@@ ... @@)
 	FileHeader       ColorPair // Style for file headers (--- a/... +++ b/...)
+	FileSeparator    ColorPair // Style for separator lines between files
 	LineNumber       ColorPair // Style for line numbers in the gutter
 	AddedHighlight   ColorPair // Style for changed text within added lines (word-level diff)
 	DeletedHighlight ColorPair // Style for changed text within deleted lines (word-level diff)

@@ -61,6 +61,16 @@ func TestStyles(t *testing.T) {
 		assert.Equal(t, "#333333", styles.FileHeader.Background)
 	})
 
+	t.Run("contains styles for file separators", func(t *testing.T) {
+		t.Parallel()
+
+		styles := diffview.Styles{
+			FileSeparator: diffview.ColorPair{Foreground: "#666666"},
+		}
+
+		assert.Equal(t, "#666666", styles.FileSeparator.Foreground)
+	})
+
 	t.Run("contains highlight styles for word-level changes", func(t *testing.T) {
 		t.Parallel()
 

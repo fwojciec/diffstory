@@ -17,14 +17,15 @@ import (
 // Model is the Bubble Tea model for viewing diffs.
 type Model struct {
 	diff          *diffview.Diff
+	styles        diffview.Styles
+	renderer      *lipgloss.Renderer
 	viewport      viewport.Model
 	ready         bool
-	content       string
 	keymap        KeyMap
 	pendingKey    string
 	hunkPositions []int // line numbers where each hunk starts
 	filePositions []int // line numbers where each file starts
-	width         int   // terminal width for status bar
+	width         int   // terminal width for rendering
 }
 
 // ModelOption configures a Model.
@@ -54,13 +55,11 @@ func NewModelWithStyles(diff *diffview.Diff, styles diffview.Styles, opts ...Mod
 		opt(cfg)
 	}
 
-	content, hunkPositions, filePositions := renderDiffWithPositions(diff, styles, cfg.renderer)
 	return Model{
-		diff:          diff,
-		content:       content,
-		keymap:        DefaultKeyMap(),
-		hunkPositions: hunkPositions,
-		filePositions: filePositions,
+		diff:     diff,
+		styles:   styles,
+		renderer: cfg.renderer,
+		keymap:   DefaultKeyMap(),
 	}
 }
 
@@ -84,6 +83,9 @@ func defaultStyles() diffview.Styles {
 		FileHeader: diffview.ColorPair{
 			Foreground: "#f9e2af", // Yellow
 			Background: "#313244", // Dark surface
+		},
+		FileSeparator: diffview.ColorPair{
+			Foreground: "#45475a", // Muted gray (subtle)
 		},
 		LineNumber: diffview.ColorPair{
 			Foreground: "#6c7086", // Muted gray
@@ -156,14 +158,28 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 	case tea.WindowSizeMsg:
-		m.width = msg.Width
 		statusBarHeight := 1
+		widthChanged := m.width != msg.Width
+		m.width = msg.Width
+
 		if !m.ready {
+			// First render - create viewport and render content
+			content, hunkPositions, filePositions := renderDiffWithPositions(m.diff, m.styles, m.renderer, m.width)
+			m.hunkPositions = hunkPositions
+			m.filePositions = filePositions
 			m.viewport = viewport.New(msg.Width, msg.Height-statusBarHeight)
-			m.viewport.SetContent(m.content)
+			m.viewport.SetContent(content)
 			m.ready = true
-		} else {
+		} else if widthChanged {
+			// Width changed - re-render content
+			content, hunkPositions, filePositions := renderDiffWithPositions(m.diff, m.styles, m.renderer, m.width)
+			m.hunkPositions = hunkPositions
+			m.filePositions = filePositions
 			m.viewport.Width = msg.Width
+			m.viewport.Height = msg.Height - statusBarHeight
+			m.viewport.SetContent(content)
+		} else {
+			// Only height changed
 			m.viewport.Height = msg.Height - statusBarHeight
 		}
 	}
@@ -365,7 +381,8 @@ const minGutterWidth = 4
 // renderDiffWithPositions converts a Diff to a styled string and tracks hunk/file positions.
 // Positions represent the line number where each file/hunk header begins.
 // If renderer is nil, the default lipgloss renderer is used.
-func renderDiffWithPositions(diff *diffview.Diff, styles diffview.Styles, renderer *lipgloss.Renderer) (content string, hunkPositions, filePositions []int) {
+// Width is the terminal width for full-width backgrounds.
+func renderDiffWithPositions(diff *diffview.Diff, styles diffview.Styles, renderer *lipgloss.Renderer, width int) (content string, hunkPositions, filePositions []int) {
 	if diff == nil {
 		return "", nil, nil
 	}
@@ -375,6 +392,7 @@ func renderDiffWithPositions(diff *diffview.Diff, styles diffview.Styles, render
 
 	// Create lipgloss styles from color pairs
 	fileHeaderStyle := styleFromColorPair(styles.FileHeader, renderer)
+	fileSeparatorStyle := styleFromColorPair(styles.FileSeparator, renderer)
 	hunkHeaderStyle := styleFromColorPair(styles.HunkHeader, renderer)
 	addedStyle := styleFromColorPair(styles.Added, renderer)
 	deletedStyle := styleFromColorPair(styles.Deleted, renderer)
@@ -388,11 +406,21 @@ func renderDiffWithPositions(diff *diffview.Diff, styles diffview.Styles, render
 
 	var sb strings.Builder
 	lineNum := 0
+	fileCount := 0
 	for _, file := range diff.Files {
 		// Only render file if it has hunks (skip binary/empty files)
 		if len(file.Hunks) == 0 {
 			continue
 		}
+
+		// Render separator before file header (except for first file)
+		if fileCount > 0 {
+			separator := strings.Repeat("─", width)
+			sb.WriteString(fileSeparatorStyle.Render(separator))
+			sb.WriteString("\n")
+			lineNum++
+		}
+		fileCount++
 
 		// Track file position at the first header line
 		filePositions = append(filePositions, lineNum)
@@ -433,14 +461,14 @@ func renderDiffWithPositions(diff *diffview.Diff, styles diffview.Styles, render
 
 					// Render deleted line with word highlighting
 					sb.WriteString(formatGutter(deletedLine.OldLineNum, deletedLine.NewLineNum, gutterWidth, lineNumStyle))
-					styledDeleted := renderLineWithSegments("-", deletedSegs, deletedStyle, deletedHighlightStyle, lineWidth)
+					styledDeleted := renderLineWithSegments("-", deletedSegs, deletedStyle, deletedHighlightStyle, width)
 					sb.WriteString(styledDeleted)
 					sb.WriteString("\n")
 					lineNum++
 
 					// Render added line with word highlighting
 					sb.WriteString(formatGutter(addedLine.OldLineNum, addedLine.NewLineNum, gutterWidth, lineNumStyle))
-					styledAdded := renderLineWithSegments("+", addedSegs, addedStyle, addedHighlightStyle, lineWidth)
+					styledAdded := renderLineWithSegments("+", addedSegs, addedStyle, addedHighlightStyle, width)
 					sb.WriteString(styledAdded)
 					sb.WriteString("\n")
 					lineNum++
@@ -461,9 +489,9 @@ func renderDiffWithPositions(diff *diffview.Diff, styles diffview.Styles, render
 				var styledLine string
 				switch line.Type {
 				case diffview.LineAdded:
-					styledLine = addedStyle.Render(padLine(fullLine, lineWidth))
+					styledLine = addedStyle.Render(padLine(fullLine, width))
 				case diffview.LineDeleted:
-					styledLine = deletedStyle.Render(padLine(fullLine, lineWidth))
+					styledLine = deletedStyle.Render(padLine(fullLine, width))
 				default:
 					styledLine = contextStyle.Render(fullLine)
 				}
@@ -577,10 +605,6 @@ func formatHunkHeader(hunk diffview.Hunk) string {
 	}
 	return header
 }
-
-// lineWidth is the width to pad added/deleted lines to for full-width backgrounds.
-// Using a large fixed value ensures backgrounds extend across typical terminal widths.
-const lineWidth = 256
 
 // linePrefixFor returns the appropriate prefix for a line type.
 func linePrefixFor(lineType diffview.LineType) string {
