@@ -84,6 +84,9 @@ func defaultStyles() diffview.Styles {
 			Foreground: "#f9e2af", // Yellow
 			Background: "#313244", // Dark surface
 		},
+		LineNumber: diffview.ColorPair{
+			Foreground: "#6c7086", // Muted gray
+		},
 	}
 }
 
@@ -347,6 +350,9 @@ func (m *Model) gotoPrevPosition(positions []int) {
 	}
 }
 
+// minGutterWidth is the minimum width of each line number column in the gutter.
+const minGutterWidth = 4
+
 // renderDiffWithPositions converts a Diff to a styled string and tracks hunk/file positions.
 // Positions represent the line number where each file/hunk header begins.
 // If renderer is nil, the default lipgloss renderer is used.
@@ -355,12 +361,16 @@ func renderDiffWithPositions(diff *diffview.Diff, styles diffview.Styles, render
 		return "", nil, nil
 	}
 
+	// Calculate dynamic gutter width based on max line number in the diff
+	gutterWidth := calculateGutterWidth(diff)
+
 	// Create lipgloss styles from color pairs
 	fileHeaderStyle := styleFromColorPair(styles.FileHeader, renderer)
 	hunkHeaderStyle := styleFromColorPair(styles.HunkHeader, renderer)
 	addedStyle := styleFromColorPair(styles.Added, renderer)
 	deletedStyle := styleFromColorPair(styles.Deleted, renderer)
 	contextStyle := styleFromColorPair(styles.Context, renderer)
+	lineNumStyle := styleFromColorPair(styles.LineNumber, renderer)
 
 	var sb strings.Builder
 	lineNum := 0
@@ -391,8 +401,12 @@ func renderDiffWithPositions(diff *diffview.Diff, styles diffview.Styles, render
 			sb.WriteString("\n")
 			lineNum++
 
-			// Render lines with prefixes and styling
+			// Render lines with gutter and prefixes
 			for _, line := range hunk.Lines {
+				// Format gutter with line numbers
+				gutter := formatGutter(line.OldLineNum, line.NewLineNum, gutterWidth, lineNumStyle)
+				sb.WriteString(gutter)
+
 				prefix := linePrefixFor(line.Type)
 				// Content may include trailing newline from parser; trim it
 				lineContent := strings.TrimSuffix(line.Content, "\n")
@@ -416,6 +430,49 @@ func renderDiffWithPositions(diff *diffview.Diff, styles diffview.Styles, render
 		}
 	}
 	return sb.String(), hunkPositions, filePositions
+}
+
+// calculateGutterWidth determines the appropriate gutter width for a diff
+// based on the maximum line number present in any hunk.
+func calculateGutterWidth(diff *diffview.Diff) int {
+	maxLineNum := 0
+	for _, file := range diff.Files {
+		for _, hunk := range file.Hunks {
+			for _, line := range hunk.Lines {
+				if line.OldLineNum > maxLineNum {
+					maxLineNum = line.OldLineNum
+				}
+				if line.NewLineNum > maxLineNum {
+					maxLineNum = line.NewLineNum
+				}
+			}
+		}
+	}
+	width := digitWidth(maxLineNum)
+	if width < minGutterWidth {
+		return minGutterWidth
+	}
+	return width
+}
+
+// formatGutter formats the gutter column with old and new line numbers.
+// Format: "  12    14 │" for lines with both numbers
+// Format: "  12     - │" for deleted lines (no new line number)
+// Format: "   -    14 │" for added lines (no old line number)
+func formatGutter(oldLineNum, newLineNum, width int, style lipgloss.Style) string {
+	oldStr := formatLineNum(oldLineNum, width)
+	newStr := formatLineNum(newLineNum, width)
+	gutter := fmt.Sprintf("%s %s │", oldStr, newStr)
+	return style.Render(gutter)
+}
+
+// formatLineNum formats a line number for the gutter.
+// Returns right-aligned number or "-" for zero (missing) line numbers.
+func formatLineNum(num, width int) string {
+	if num == 0 {
+		return fmt.Sprintf("%*s", width, "-")
+	}
+	return fmt.Sprintf("%*d", width, num)
 }
 
 // styleFromColorPair creates a lipgloss style from a ColorPair.
