@@ -240,7 +240,7 @@ func TestModel_GotoTopOnGG(t *testing.T) {
 		return bytes.Contains(out, []byte("FIRST_LINE_MARKER"))
 	})
 
-	// Scroll down with G (go to bottom)
+	// First scroll to bottom with G (setup for testing gg)
 	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'G'}})
 
 	// Wait for last line to be visible
