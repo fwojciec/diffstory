@@ -1083,6 +1083,14 @@ func TestModel_StatusBarShowsScrollPosition(t *testing.T) {
 		return bytes.Contains(out, []byte("Top"))
 	})
 
+	// Scroll down half page to get percentage display
+	tm.Send(tea.KeyMsg{Type: tea.KeyCtrlD})
+
+	// Should show a percentage (contains %)
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("%"))
+	})
+
 	// Scroll to bottom
 	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'G'}})
 
@@ -1128,7 +1136,7 @@ func TestModel_StatusBarShowsKeyHints(t *testing.T) {
 	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
 }
 
-func TestModel_StatusBarUpdatesOnNavigation(t *testing.T) {
+func TestModel_StatusBarUpdatesOnFileNavigation(t *testing.T) {
 	t.Parallel()
 
 	// Create 3 files with multiple lines each
@@ -1181,6 +1189,67 @@ func TestModel_StatusBarUpdatesOnNavigation(t *testing.T) {
 	// Should now show file 3/3
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
 		return bytes.Contains(out, []byte("file 3/3"))
+	})
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}
+
+func TestModel_StatusBarUpdatesOnHunkNavigation(t *testing.T) {
+	t.Parallel()
+
+	// Create file with 3 hunks, each with multiple lines
+	lines := make([]diffview.Line, 15)
+	for i := range lines {
+		lines[i] = diffview.Line{Type: diffview.LineContext, Content: "content line"}
+	}
+
+	diff := &diffview.Diff{
+		Files: []diffview.FileDiff{
+			{
+				OldPath: "a/file.go",
+				NewPath: "b/file.go",
+				Hunks: []diffview.Hunk{
+					{Lines: lines},
+					{Lines: lines},
+					{Lines: lines},
+				},
+			},
+		},
+	}
+
+	m := bubbletea.NewModel(diff)
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(80, 10), // Small height to enable scrolling
+	)
+
+	// Initially at hunk 1/3
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("hunk 1/3"))
+	})
+
+	// Navigate to next hunk with 'n'
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+
+	// Should now show hunk 2/3
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("hunk 2/3"))
+	})
+
+	// Navigate to next hunk
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+
+	// Should now show hunk 3/3
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("hunk 3/3"))
+	})
+
+	// Navigate back with 'N'
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'N'}})
+
+	// Should now show hunk 2/3
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("hunk 2/3"))
 	})
 
 	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
