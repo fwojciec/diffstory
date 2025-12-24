@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -12,6 +13,9 @@ import (
 	"github.com/fwojciec/diffview/bubbletea"
 	"github.com/fwojciec/diffview/gitdiff"
 )
+
+// ErrNoChanges is returned when the diff contains no changes to display.
+var ErrNoChanges = errors.New("no changes to display")
 
 // App encapsulates the application logic for testing.
 type App struct {
@@ -25,6 +29,9 @@ func (a *App) Run(ctx context.Context) error {
 	diff, err := a.Parser.Parse(a.Stdin)
 	if err != nil {
 		return err
+	}
+	if len(diff.Files) == 0 {
+		return ErrNoChanges
 	}
 	return a.Viewer.View(ctx, diff)
 }

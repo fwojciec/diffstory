@@ -77,7 +77,7 @@ func TestApp_Run_ViewError(t *testing.T) {
 		Stdin: strings.NewReader("valid diff content"),
 		Parser: &mock.Parser{
 			ParseFn: func(r io.Reader) (*diffview.Diff, error) {
-				return &diffview.Diff{}, nil
+				return &diffview.Diff{Files: []diffview.FileDiff{{}}}, nil
 			},
 		},
 		Viewer: &mock.Viewer{
@@ -91,4 +91,29 @@ func TestApp_Run_ViewError(t *testing.T) {
 
 	require.Error(t, err)
 	assert.Equal(t, viewErr, err)
+}
+
+func TestApp_Run_EmptyDiff(t *testing.T) {
+	t.Parallel()
+
+	viewerCalled := false
+	app := &main.App{
+		Stdin: strings.NewReader(""),
+		Parser: &mock.Parser{
+			ParseFn: func(r io.Reader) (*diffview.Diff, error) {
+				return &diffview.Diff{Files: nil}, nil
+			},
+		},
+		Viewer: &mock.Viewer{
+			ViewFn: func(ctx context.Context, diff *diffview.Diff) error {
+				viewerCalled = true
+				return nil
+			},
+		},
+	}
+
+	err := app.Run(context.Background())
+
+	require.ErrorIs(t, err, main.ErrNoChanges)
+	assert.False(t, viewerCalled, "viewer should not be called for empty diff")
 }
