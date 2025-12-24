@@ -85,6 +85,9 @@ func defaultStyles() diffview.Styles {
 			Foreground: "#f9e2af", // Yellow
 			Background: "#313244", // Dark surface
 		},
+		FileSeparator: diffview.ColorPair{
+			Foreground: "#45475a", // Muted gray (subtle)
+		},
 		LineNumber: diffview.ColorPair{
 			Foreground: "#6c7086", // Muted gray
 		},
@@ -362,6 +365,9 @@ func (m *Model) gotoPrevPosition(positions []int) {
 // minGutterWidth is the minimum width of each line number column in the gutter.
 const minGutterWidth = 4
 
+// separatorWidth is the width of the separator line between files.
+const separatorWidth = 80
+
 // renderDiffWithPositions converts a Diff to a styled string and tracks hunk/file positions.
 // Positions represent the line number where each file/hunk header begins.
 // If renderer is nil, the default lipgloss renderer is used.
@@ -375,6 +381,7 @@ func renderDiffWithPositions(diff *diffview.Diff, styles diffview.Styles, render
 
 	// Create lipgloss styles from color pairs
 	fileHeaderStyle := styleFromColorPair(styles.FileHeader, renderer)
+	fileSeparatorStyle := styleFromColorPair(styles.FileSeparator, renderer)
 	hunkHeaderStyle := styleFromColorPair(styles.HunkHeader, renderer)
 	addedStyle := styleFromColorPair(styles.Added, renderer)
 	deletedStyle := styleFromColorPair(styles.Deleted, renderer)
@@ -388,11 +395,21 @@ func renderDiffWithPositions(diff *diffview.Diff, styles diffview.Styles, render
 
 	var sb strings.Builder
 	lineNum := 0
+	fileCount := 0
 	for _, file := range diff.Files {
 		// Only render file if it has hunks (skip binary/empty files)
 		if len(file.Hunks) == 0 {
 			continue
 		}
+
+		// Render separator before file header (except for first file)
+		if fileCount > 0 {
+			separator := strings.Repeat("─", separatorWidth)
+			sb.WriteString(fileSeparatorStyle.Render(separator))
+			sb.WriteString("\n")
+			lineNum++
+		}
+		fileCount++
 
 		// Track file position at the first header line
 		filePositions = append(filePositions, lineNum)

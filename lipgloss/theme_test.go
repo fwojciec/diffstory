@@ -62,6 +62,15 @@ func TestDefaultTheme(t *testing.T) {
 		assert.NotEmpty(t, styles.FileHeader.Foreground)
 	})
 
+	t.Run("returns styles with file separator coloring", func(t *testing.T) {
+		t.Parallel()
+
+		theme := lipgloss.DefaultTheme()
+		styles := theme.Styles()
+
+		assert.NotEmpty(t, styles.FileSeparator.Foreground)
+	})
+
 	t.Run("returns same styles as DarkTheme", func(t *testing.T) {
 		t.Parallel()
 
@@ -93,6 +102,7 @@ func TestDarkTheme(t *testing.T) {
 		assert.NotEmpty(t, styles.Context.Foreground)
 		assert.NotEmpty(t, styles.HunkHeader.Foreground)
 		assert.NotEmpty(t, styles.FileHeader.Foreground)
+		assert.NotEmpty(t, styles.FileSeparator.Foreground)
 	})
 
 	t.Run("returns highlight styles for word-level diff", func(t *testing.T) {
@@ -128,6 +138,7 @@ func TestLightTheme(t *testing.T) {
 		assert.NotEmpty(t, styles.Context.Foreground)
 		assert.NotEmpty(t, styles.HunkHeader.Foreground)
 		assert.NotEmpty(t, styles.FileHeader.Foreground)
+		assert.NotEmpty(t, styles.FileSeparator.Foreground)
 	})
 
 	t.Run("returns highlight styles for word-level diff", func(t *testing.T) {

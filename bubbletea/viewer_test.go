@@ -690,18 +690,19 @@ func TestModel_TracksHunkPositions(t *testing.T) {
 	// Hunk positions now point to hunk headers (after file headers)
 	// File 1: lines 0-1 are file headers, line 2 is hunk 1 header
 	// Lines 3-4 are hunk 1 content, line 5 is hunk 2 header, line 6 is content
-	// File 2: lines 7-8 are file headers, line 9 is hunk header, line 10 is content
+	// Line 7 is separator (before file 2)
+	// File 2: lines 8-9 are file headers, line 10 is hunk header, line 11 is content
 	hunkPositions := m.HunkPositions()
 	assert.Len(t, hunkPositions, 3, "should track 3 hunks")
 	assert.Equal(t, 2, hunkPositions[0], "first hunk header at line 2")
 	assert.Equal(t, 5, hunkPositions[1], "second hunk header at line 5")
-	assert.Equal(t, 9, hunkPositions[2], "third hunk header at line 9")
+	assert.Equal(t, 10, hunkPositions[2], "third hunk header at line 10")
 
-	// File positions point to file headers (--- line)
+	// File positions point to file headers (--- line), after separator
 	filePositions := m.FilePositions()
 	assert.Len(t, filePositions, 2, "should track 2 files")
 	assert.Equal(t, 0, filePositions[0], "first file header at line 0")
-	assert.Equal(t, 7, filePositions[1], "second file header at line 7")
+	assert.Equal(t, 8, filePositions[1], "second file header at line 8")
 }
 
 func TestModel_SkipsFilesWithNoHunks(t *testing.T) {
@@ -747,17 +748,18 @@ func TestModel_SkipsFilesWithNoHunks(t *testing.T) {
 	// Should only track files with hunks (skip binary file)
 	// File 1: lines 0-1 (headers), line 2 (hunk), line 3 (content)
 	// Binary file is skipped entirely
-	// File 2: lines 4-5 (headers), line 6 (hunk), line 7 (content)
+	// Line 4 is separator (before file 2)
+	// File 2: lines 5-6 (headers), line 7 (hunk), line 8 (content)
 	filePositions := m.FilePositions()
 	assert.Len(t, filePositions, 2, "should only track 2 files with hunks")
 	assert.Equal(t, 0, filePositions[0], "first file header at line 0")
-	assert.Equal(t, 4, filePositions[1], "second file header at line 4")
+	assert.Equal(t, 5, filePositions[1], "second file header at line 5")
 
 	// Hunks should still be tracked correctly
 	hunkPositions := m.HunkPositions()
 	assert.Len(t, hunkPositions, 2, "should track 2 hunks")
 	assert.Equal(t, 2, hunkPositions[0], "first hunk at line 2")
-	assert.Equal(t, 6, hunkPositions[1], "second hunk at line 6")
+	assert.Equal(t, 7, hunkPositions[1], "second hunk at line 7")
 }
 
 func TestViewer_ContextCancellation(t *testing.T) {
@@ -1585,4 +1587,108 @@ func TestModel_HighlightsWordLevelChanges(t *testing.T) {
 
 	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
 	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}
+
+func TestModel_RendersSeparatorBetweenFiles(t *testing.T) {
+	t.Parallel()
+
+	// Create diff with 2 files to verify separator appears between them
+	diff := &diffview.Diff{
+		Files: []diffview.FileDiff{
+			{
+				OldPath:   "a/first.go",
+				NewPath:   "b/first.go",
+				Operation: diffview.FileModified,
+				Hunks: []diffview.Hunk{
+					{
+						OldStart: 1,
+						OldCount: 1,
+						NewStart: 1,
+						NewCount: 1,
+						Lines: []diffview.Line{
+							{Type: diffview.LineContext, Content: "first file content"},
+						},
+					},
+				},
+			},
+			{
+				OldPath:   "a/second.go",
+				NewPath:   "b/second.go",
+				Operation: diffview.FileModified,
+				Hunks: []diffview.Hunk{
+					{
+						OldStart: 1,
+						OldCount: 1,
+						NewStart: 1,
+						NewCount: 1,
+						Lines: []diffview.Line{
+							{Type: diffview.LineContext, Content: "second file content"},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	m := bubbletea.NewModel(diff)
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(80, 24),
+	)
+
+	// Separator should use box-drawing character ─ (U+2500)
+	// It should appear between files but NOT before the first file
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		hasSeparator := bytes.Contains(out, []byte("─"))
+		hasFirstFile := bytes.Contains(out, []byte("first.go"))
+		hasSecondFile := bytes.Contains(out, []byte("second.go"))
+		return hasSeparator && hasFirstFile && hasSecondFile
+	})
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}
+
+func TestModel_NoSeparatorBeforeFirstFile(t *testing.T) {
+	t.Parallel()
+
+	// Create diff with single file - no separator should appear
+	diff := &diffview.Diff{
+		Files: []diffview.FileDiff{
+			{
+				OldPath:   "a/only.go",
+				NewPath:   "b/only.go",
+				Operation: diffview.FileModified,
+				Hunks: []diffview.Hunk{
+					{
+						OldStart: 1,
+						OldCount: 1,
+						NewStart: 1,
+						NewCount: 1,
+						Lines: []diffview.Line{
+							{Type: diffview.LineContext, Content: "only file content"},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	m := bubbletea.NewModel(diff)
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(80, 24),
+	)
+
+	// Wait for content to render
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("only.go"))
+	})
+
+	// Give a moment for full render, then check no separator
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	finalOut := tm.FinalOutput(t, teatest.WithFinalTimeout(0))
+	out, err := io.ReadAll(finalOut)
+	require.NoError(t, err)
+
+	// For a single file, there should be no separator
+	assert.NotContains(t, string(out), "─", "single file should not have separator")
 }
