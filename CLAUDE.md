@@ -109,6 +109,19 @@ func TestFoo(t *testing.T) {
 - Use `assert` for test assertions (continues on failure)
 - Use `assert.Empty(t, slice)` not `assert.Len(t, slice, 0)`
 
+**Interface Compliance Checks**:
+Go's `var _ Interface = (*Type)(nil)` pattern verifies interface implementation at compile time. These checks MUST be in production code, NOT in tests:
+
+```go
+// CORRECT: In parser.go (production code)
+var _ diffview.Parser = (*Parser)(nil)
+
+// WRONG: In parser_test.go (test file)
+var _ diffview.Parser = (*Parser)(nil)  // Don't do this
+```
+
+Why: Tests provide runtime verification only. Production code provides compile-time guarantees—the compiler catches interface mismatches immediately, before any code runs.
+
 ## Linting
 
 golangci-lint enforces:
