@@ -19,10 +19,11 @@ func NewTokenizer() *Tokenizer {
 }
 
 // Tokenize splits source code into syntax-highlighted tokens for the given language.
-// Returns nil if the language is not supported.
+// Returns nil if the language is not supported or an error occurs.
+// Returns an empty slice for empty source (valid input, no tokens).
 func (t *Tokenizer) Tokenize(language, source string) []diffview.Token {
 	if source == "" {
-		return nil
+		return []diffview.Token{}
 	}
 
 	lexer := lexers.Get(language)
