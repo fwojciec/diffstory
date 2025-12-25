@@ -22,16 +22,17 @@ func DefaultTheme() *Theme {
 }
 
 // DarkTheme returns a theme optimized for dark terminal backgrounds.
+// Background colors are very dark to allow syntax highlighting colors to remain readable.
 func DarkTheme() *Theme {
 	return &Theme{
 		styles: diffview.Styles{
 			Added: diffview.ColorPair{
 				Foreground: "#a6e3a1", // Green
-				Background: "#2d3f2d", // Subtle green background
+				Background: "#004000", // Very dark green - syntax colors stay readable
 			},
 			Deleted: diffview.ColorPair{
 				Foreground: "#f38ba8", // Red
-				Background: "#3f2d2d", // Subtle red background
+				Background: "#3f0001", // Very dark red - syntax colors stay readable
 			},
 			Context: diffview.ColorPair{
 				Foreground: "#6c7086", // Muted gray (dimmed for change visibility)
