@@ -497,7 +497,7 @@ func computePositions(diff *diffview.Diff) (hunkPositions, filePositions []int) 
 
 	lineNum := 0
 	for _, file := range diff.Files {
-		// Skip files that shouldn't be rendered (binary files)
+		// Skip files that shouldn't be rendered (binary files, mode-only changes)
 		if !shouldRenderFile(file) {
 			continue
 		}
@@ -605,7 +605,7 @@ func renderDiff(cfg renderConfig) string {
 
 	var sb strings.Builder
 	for _, file := range diff.Files {
-		// Skip files that shouldn't be rendered (binary files)
+		// Skip files that shouldn't be rendered (binary files, mode-only changes)
 		if !shouldRenderFile(file) {
 			continue
 		}
