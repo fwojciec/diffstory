@@ -16,13 +16,17 @@ func TestNewTheme(t *testing.T) {
 
 		palette := diffview.Palette{
 			Background: "#000000",
+			Foreground: "#ffffff",
 			Added:      "#00ff00",
 		}
 
 		theme := lipgloss.NewTheme(palette)
 		styles := theme.Styles()
 
-		assert.Equal(t, "#00ff00", styles.Added.Foreground)
+		// Added lines use neutral foreground (not green) for readability
+		assert.Equal(t, "#ffffff", styles.Added.Foreground)
+		// Background is a subtle blend of added color with background
+		assert.NotEmpty(t, styles.Added.Background)
 	})
 
 	t.Run("derives deleted style from palette", func(t *testing.T) {
@@ -30,13 +34,17 @@ func TestNewTheme(t *testing.T) {
 
 		palette := diffview.Palette{
 			Background: "#000000",
+			Foreground: "#ffffff",
 			Deleted:    "#ff0000",
 		}
 
 		theme := lipgloss.NewTheme(palette)
 		styles := theme.Styles()
 
-		assert.Equal(t, "#ff0000", styles.Deleted.Foreground)
+		// Deleted lines use neutral foreground (not red) for readability
+		assert.Equal(t, "#ffffff", styles.Deleted.Foreground)
+		// Background is a subtle blend of deleted color with background
+		assert.NotEmpty(t, styles.Deleted.Background)
 	})
 
 	t.Run("derives context style from palette", func(t *testing.T) {
@@ -217,9 +225,10 @@ func TestDefaultTheme(t *testing.T) {
 		styles := theme.Styles()
 		palette := theme.Palette()
 
-		// Styles should be derived from palette colors
-		assert.Equal(t, string(palette.Added), styles.Added.Foreground)
-		assert.Equal(t, string(palette.Deleted), styles.Deleted.Foreground)
+		// Added/Deleted use neutral foreground for readability with syntax highlighting
+		assert.Equal(t, string(palette.Foreground), styles.Added.Foreground)
+		assert.Equal(t, string(palette.Foreground), styles.Deleted.Foreground)
+		// Context keeps its own color
 		assert.Equal(t, string(palette.Context), styles.Context.Foreground)
 	})
 
@@ -258,8 +267,8 @@ func TestTestTheme(t *testing.T) {
 		styles := theme.Styles()
 		palette := theme.Palette()
 
-		// Styles should be derived from palette colors
-		assert.Equal(t, string(palette.Added), styles.Added.Foreground)
-		assert.Equal(t, string(palette.Deleted), styles.Deleted.Foreground)
+		// Added/Deleted use neutral foreground for readability with syntax highlighting
+		assert.Equal(t, string(palette.Foreground), styles.Added.Foreground)
+		assert.Equal(t, string(palette.Foreground), styles.Deleted.Foreground)
 	})
 }

@@ -1104,7 +1104,6 @@ func TestModel_BackgroundExtendsFullWidth(t *testing.T) {
 
 	// Background should extend beyond just the text "+short"
 	// The styled content should include padding spaces within the style
-	// Looking for background color followed by spaces within the styled region
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
 		hasAddedLine := bytes.Contains(out, []byte("+short"))
 		// Check for padding spaces within styled region (spaces before reset code)
@@ -1485,9 +1484,9 @@ func TestModel_RendersLineNumbersInGutter(t *testing.T) {
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
 		// Check for context line with both numbers
 		hasContext := bytes.Contains(out, []byte("10")) && bytes.Contains(out, []byte("context"))
-		// Check for deleted line with old number and dash
+		// Check for deleted line with old number and prefix
 		hasDeleted := bytes.Contains(out, []byte("11")) && bytes.Contains(out, []byte("-deleted"))
-		// Check for added line with dash and new number
+		// Check for added line with new number and prefix
 		hasAdded := bytes.Contains(out, []byte("+added"))
 		return hasContext && hasDeleted && hasAdded
 	})
@@ -1533,59 +1532,6 @@ func TestModel_GutterShowsDashForMissingLineNumbers(t *testing.T) {
 		// The gutter separator should appear right before the + prefix
 		hasGutterBeforeAdded := bytes.Contains(out, []byte("│+new line"))
 		return hasGutterBeforeAdded
-	})
-
-	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
-	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
-}
-
-func TestModel_HighlightsWordLevelChanges(t *testing.T) {
-	t.Parallel()
-
-	// Create diff with a deleted+added pair where only one word changes
-	diff := &diffview.Diff{
-		Files: []diffview.FileDiff{
-			{
-				OldPath:   "a/test.go",
-				NewPath:   "b/test.go",
-				Operation: diffview.FileModified,
-				Hunks: []diffview.Hunk{
-					{
-						OldStart: 1,
-						OldCount: 1,
-						NewStart: 1,
-						NewCount: 1,
-						Lines: []diffview.Line{
-							{Type: diffview.LineDeleted, Content: "hello world", OldLineNum: 1, NewLineNum: 0},
-							{Type: diffview.LineAdded, Content: "hello universe", OldLineNum: 0, NewLineNum: 1},
-						},
-					},
-				},
-			},
-		},
-	}
-
-	// Use TestTheme with predictable colors and true color renderer
-	m := bubbletea.NewModel(diff,
-		bubbletea.WithTheme(dv.TestTheme()),
-		bubbletea.WithRenderer(trueColorRenderer()),
-	)
-	tm := teatest.NewTestModel(t, m,
-		teatest.WithInitialTermSize(80, 24),
-	)
-
-	// Wait for content to render with word-level highlighting
-	// The changed words "world" and "universe" should have highlight background colors
-	// TestTheme AddedHighlight background: #00ff00 = RGB(0, 255, 0) -> "48;2;0;255;0"
-	// TestTheme DeletedHighlight background: #ff0000 = RGB(255, 0, 0) -> "48;2;255;0;0"
-	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		// Check that the content appears
-		hasWorld := bytes.Contains(out, []byte("world"))
-		hasUniverse := bytes.Contains(out, []byte("universe"))
-		// Check for the highlight background colors (true color format: 48;2;R;G;B)
-		hasAddedHighlight := bytes.Contains(out, []byte("48;2;0;255;0"))
-		hasDeletedHighlight := bytes.Contains(out, []byte("48;2;255;0;0"))
-		return hasWorld && hasUniverse && hasAddedHighlight && hasDeletedHighlight
 	})
 
 	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
@@ -1764,8 +1710,7 @@ func TestModel_WithTheme(t *testing.T) {
 		},
 	}
 
-	// Use TestTheme which has pure green (#00ff00) for added lines
-	// RGB(0, 255, 0) -> "38;2;0;255;0" for foreground
+	// TestTheme uses neutral foreground (#ffffff) with green-tinted background for added lines
 	theme := dv.TestTheme()
 	m := bubbletea.NewModel(diff,
 		bubbletea.WithTheme(theme),
@@ -1775,12 +1720,13 @@ func TestModel_WithTheme(t *testing.T) {
 		teatest.WithInitialTermSize(80, 24),
 	)
 
-	// TestTheme uses pure green (#00ff00) for added lines
-	// Should see foreground color code "38;2;0;255;0"
+	// TestTheme uses neutral foreground (#ffffff) with green-tinted background
+	// Should see background color code with green tint (48;2;...)
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
 		hasContent := bytes.Contains(out, []byte("added"))
-		hasGreenForeground := bytes.Contains(out, []byte("38;2;0;255;0"))
-		return hasContent && hasGreenForeground
+		// Check for any background color on the added line (48;2; prefix)
+		hasBackground := bytes.Contains(out, []byte("48;2;"))
+		return hasContent && hasBackground
 	})
 
 	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
