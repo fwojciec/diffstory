@@ -49,6 +49,7 @@ func WithRenderer(r *lipgloss.Renderer) ModelOption {
 }
 
 // WithTheme sets the theme for the model.
+// If nil is passed, the model uses default styles and palette.
 func WithTheme(t diffview.Theme) ModelOption {
 	return func(cfg *modelConfig) {
 		cfg.theme = t

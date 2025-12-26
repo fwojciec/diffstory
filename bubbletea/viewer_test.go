@@ -1825,9 +1825,9 @@ func TestModel_StatusBarUsesThemeUIColors(t *testing.T) {
 	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
 
 	// The status bar should use themed colors, which means there should be
-	// color codes immediately before "file 1/1" - the current implementation
-	// uses lipgloss.NewStyle() which ignores the renderer, so status bar
-	// renders without colors in tests. After the fix, it should have colors.
+	// color codes immediately before "file 1/1". Previously it used
+	// lipgloss.NewStyle(), which ignored the renderer so the status bar
+	// rendered without colors in tests; this test verifies it now has colors.
 	//
 	// Look for the pattern: background color code followed by "file 1/1"
 	// TestTheme UIBackground is #333333 = RGB(51, 51, 51) -> "48;2;51;51;51"
