@@ -19,25 +19,29 @@ var _ diffview.Viewer = (*Viewer)(nil)
 
 // Model is the Bubble Tea model for viewing diffs.
 type Model struct {
-	diff          *diffview.Diff
-	styles        diffview.Styles
-	palette       diffview.Palette
-	renderer      *lipgloss.Renderer
-	viewport      viewport.Model
-	ready         bool
-	keymap        KeyMap
-	pendingKey    string
-	hunkPositions []int // line numbers where each hunk starts
-	filePositions []int // line numbers where each file starts
-	width         int   // terminal width for rendering
+	diff             *diffview.Diff
+	styles           diffview.Styles
+	palette          diffview.Palette
+	renderer         *lipgloss.Renderer
+	languageDetector diffview.LanguageDetector
+	tokenizer        diffview.Tokenizer
+	viewport         viewport.Model
+	ready            bool
+	keymap           KeyMap
+	pendingKey       string
+	hunkPositions    []int // line numbers where each hunk starts
+	filePositions    []int // line numbers where each file starts
+	width            int   // terminal width for rendering
 }
 
 // ModelOption configures a Model.
 type ModelOption func(*modelConfig)
 
 type modelConfig struct {
-	renderer *lipgloss.Renderer
-	theme    diffview.Theme
+	renderer         *lipgloss.Renderer
+	theme            diffview.Theme
+	languageDetector diffview.LanguageDetector
+	tokenizer        diffview.Tokenizer
 }
 
 // WithRenderer sets a custom lipgloss renderer for the model.
@@ -53,6 +57,20 @@ func WithRenderer(r *lipgloss.Renderer) ModelOption {
 func WithTheme(t diffview.Theme) ModelOption {
 	return func(cfg *modelConfig) {
 		cfg.theme = t
+	}
+}
+
+// WithLanguageDetector sets the language detector for syntax highlighting.
+func WithLanguageDetector(d diffview.LanguageDetector) ModelOption {
+	return func(cfg *modelConfig) {
+		cfg.languageDetector = d
+	}
+}
+
+// WithTokenizer sets the tokenizer for syntax highlighting.
+func WithTokenizer(t diffview.Tokenizer) ModelOption {
+	return func(cfg *modelConfig) {
+		cfg.tokenizer = t
 	}
 }
 
@@ -78,13 +96,15 @@ func NewModel(diff *diffview.Diff, opts ...ModelOption) Model {
 	hunkPositions, filePositions := computePositions(diff)
 
 	return Model{
-		diff:          diff,
-		styles:        styles,
-		palette:       palette,
-		renderer:      cfg.renderer,
-		keymap:        DefaultKeyMap(),
-		hunkPositions: hunkPositions,
-		filePositions: filePositions,
+		diff:             diff,
+		styles:           styles,
+		palette:          palette,
+		renderer:         cfg.renderer,
+		languageDetector: cfg.languageDetector,
+		tokenizer:        cfg.tokenizer,
+		keymap:           DefaultKeyMap(),
+		hunkPositions:    hunkPositions,
+		filePositions:    filePositions,
 	}
 }
 
@@ -229,13 +249,27 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		if !m.ready {
 			// First render - create viewport and render content
-			content := renderDiff(m.diff, m.styles, m.renderer, m.width)
+			content := renderDiff(renderConfig{
+				diff:             m.diff,
+				styles:           m.styles,
+				renderer:         m.renderer,
+				width:            m.width,
+				languageDetector: m.languageDetector,
+				tokenizer:        m.tokenizer,
+			})
 			m.viewport = viewport.New(msg.Width, msg.Height-statusBarHeight)
 			m.viewport.SetContent(content)
 			m.ready = true
 		} else if widthChanged {
 			// Width changed - re-render content
-			content := renderDiff(m.diff, m.styles, m.renderer, m.width)
+			content := renderDiff(renderConfig{
+				diff:             m.diff,
+				styles:           m.styles,
+				renderer:         m.renderer,
+				width:            m.width,
+				languageDetector: m.languageDetector,
+				tokenizer:        m.tokenizer,
+			})
 			m.viewport.Width = msg.Width
 			m.viewport.Height = msg.Height - statusBarHeight
 			m.viewport.SetContent(content)
@@ -473,10 +507,24 @@ func computePositions(diff *diffview.Diff) (hunkPositions, filePositions []int) 
 	return hunkPositions, filePositions
 }
 
+// renderConfig holds all rendering parameters for renderDiff.
+type renderConfig struct {
+	diff             *diffview.Diff
+	styles           diffview.Styles
+	renderer         *lipgloss.Renderer
+	width            int
+	languageDetector diffview.LanguageDetector
+	tokenizer        diffview.Tokenizer
+}
+
 // renderDiff converts a Diff to a styled string.
 // If renderer is nil, the default lipgloss renderer is used.
 // Width is the terminal width for full-width backgrounds.
-func renderDiff(diff *diffview.Diff, styles diffview.Styles, renderer *lipgloss.Renderer, width int) string {
+func renderDiff(cfg renderConfig) string {
+	diff := cfg.diff
+	styles := cfg.styles
+	renderer := cfg.renderer
+	width := cfg.width
 	if diff == nil {
 		return ""
 	}
@@ -503,6 +551,12 @@ func renderDiff(diff *diffview.Diff, styles diffview.Styles, renderer *lipgloss.
 		// Only render file if it has hunks (skip binary/empty files)
 		if len(file.Hunks) == 0 {
 			continue
+		}
+
+		// Detect language for syntax highlighting
+		var language string
+		if cfg.languageDetector != nil {
+			language = cfg.languageDetector.DetectFromPath(file.NewPath)
 		}
 
 		// Render enhanced file header with box-drawing and change statistics
@@ -574,22 +628,107 @@ func renderDiff(diff *diffview.Diff, styles diffview.Styles, renderer *lipgloss.
 
 				prefix := linePrefixFor(line.Type)
 				lineContent := strings.TrimSuffix(line.Content, "\n")
-				fullLine := prefix + lineContent
+
+				// Try to tokenize for syntax highlighting
+				var tokens []diffview.Token
+				if cfg.tokenizer != nil && language != "" {
+					tokens = cfg.tokenizer.Tokenize(language, lineContent)
+				}
 
 				var styledLine string
-				switch line.Type {
-				case diffview.LineAdded:
-					styledLine = addedStyle.Render(padLine(fullLine, width))
-				case diffview.LineDeleted:
-					styledLine = deletedStyle.Render(padLine(fullLine, width))
-				default:
-					styledLine = contextStyle.Render(fullLine)
+				if tokens != nil {
+					// Render with syntax highlighting
+					var colors diffview.ColorPair
+					switch line.Type {
+					case diffview.LineAdded:
+						colors = styles.Added
+					case diffview.LineDeleted:
+						colors = styles.Deleted
+					default:
+						colors = styles.Context
+					}
+					styledLine = renderLineWithTokens(prefix, tokens, colors, renderer, width)
+				} else {
+					// Fallback to plain rendering
+					fullLine := prefix + lineContent
+					switch line.Type {
+					case diffview.LineAdded:
+						styledLine = addedStyle.Render(padLine(fullLine, width))
+					case diffview.LineDeleted:
+						styledLine = deletedStyle.Render(padLine(fullLine, width))
+					default:
+						styledLine = contextStyle.Render(fullLine)
+					}
 				}
 				sb.WriteString(styledLine)
 				sb.WriteString("\n")
 			}
 		}
 	}
+	return sb.String()
+}
+
+// renderLineWithTokens renders a line with syntax highlighting.
+// Each token gets its syntax foreground color combined with the diff background.
+func renderLineWithTokens(prefix string, tokens []diffview.Token, colors diffview.ColorPair, renderer *lipgloss.Renderer, width int) string {
+	var sb strings.Builder
+
+	// Helper to create a new style with the renderer
+	newStyle := func() lipgloss.Style {
+		if renderer != nil {
+			return renderer.NewStyle()
+		}
+		return lipgloss.NewStyle()
+	}
+
+	// Create base style with diff colors
+	baseStyle := newStyle()
+	if colors.Foreground != "" {
+		baseStyle = baseStyle.Foreground(lipgloss.Color(colors.Foreground))
+	}
+	if colors.Background != "" {
+		baseStyle = baseStyle.Background(lipgloss.Color(colors.Background))
+	}
+
+	// Render prefix with base style
+	sb.WriteString(baseStyle.Render(prefix))
+
+	// Render each token with syntax foreground + diff background
+	for _, tok := range tokens {
+		// Build style from scratch for each token
+		style := newStyle()
+
+		// Always apply diff background
+		if colors.Background != "" {
+			style = style.Background(lipgloss.Color(colors.Background))
+		}
+
+		// Use syntax foreground if provided, otherwise use diff foreground
+		if tok.Style.Foreground != "" {
+			style = style.Foreground(lipgloss.Color(tok.Style.Foreground))
+		} else if colors.Foreground != "" {
+			style = style.Foreground(lipgloss.Color(colors.Foreground))
+		}
+
+		// Apply bold if specified by syntax
+		if tok.Style.Bold {
+			style = style.Bold(true)
+		}
+
+		sb.WriteString(style.Render(tok.Text))
+	}
+
+	// Calculate current length and pad if needed
+	currentLen := lipgloss.Width(prefix)
+	for _, tok := range tokens {
+		currentLen += lipgloss.Width(tok.Text)
+	}
+
+	if currentLen < width {
+		padding := strings.Repeat(" ", width-currentLen)
+		sb.WriteString(baseStyle.Render(padding))
+	}
+
 	return sb.String()
 }
 
@@ -720,8 +859,10 @@ func padLine(line string, width int) string {
 
 // Viewer implements diffview.Viewer using a Bubble Tea TUI.
 type Viewer struct {
-	theme       diffview.Theme
-	programOpts []tea.ProgramOption
+	theme            diffview.Theme
+	languageDetector diffview.LanguageDetector
+	tokenizer        diffview.Tokenizer
+	programOpts      []tea.ProgramOption
 }
 
 // ViewerOption configures a Viewer.
@@ -732,6 +873,20 @@ type ViewerOption func(*Viewer)
 func WithProgramOptions(opts ...tea.ProgramOption) ViewerOption {
 	return func(v *Viewer) {
 		v.programOpts = append(v.programOpts, opts...)
+	}
+}
+
+// WithViewerLanguageDetector sets the language detector for syntax highlighting.
+func WithViewerLanguageDetector(d diffview.LanguageDetector) ViewerOption {
+	return func(v *Viewer) {
+		v.languageDetector = d
+	}
+}
+
+// WithViewerTokenizer sets the tokenizer for syntax highlighting.
+func WithViewerTokenizer(t diffview.Tokenizer) ViewerOption {
+	return func(v *Viewer) {
+		v.tokenizer = t
 	}
 }
 
@@ -746,7 +901,11 @@ func NewViewer(theme diffview.Theme, opts ...ViewerOption) *Viewer {
 
 // View displays the diff and blocks until the user exits.
 func (v *Viewer) View(ctx context.Context, diff *diffview.Diff) error {
-	m := NewModel(diff, WithTheme(v.theme))
+	m := NewModel(diff,
+		WithTheme(v.theme),
+		WithLanguageDetector(v.languageDetector),
+		WithTokenizer(v.tokenizer),
+	)
 	opts := []tea.ProgramOption{
 		tea.WithAltScreen(),
 		tea.WithMouseCellMotion(),

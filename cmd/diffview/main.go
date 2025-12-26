@@ -11,6 +11,7 @@ import (
 
 	"github.com/fwojciec/diffview"
 	"github.com/fwojciec/diffview/bubbletea"
+	"github.com/fwojciec/diffview/chroma"
 	"github.com/fwojciec/diffview/gitdiff"
 	"github.com/fwojciec/diffview/lipgloss"
 )
@@ -53,10 +54,22 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
+	// Set up syntax highlighting
+	theme := lipgloss.DefaultTheme()
+	detector := chroma.NewDetector()
+	tokenizer, err := chroma.NewTokenizer(chroma.StyleFromPalette(theme.Palette()))
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "Error setting up syntax highlighting:", err)
+		os.Exit(1)
+	}
+
 	app := &App{
 		Stdin:  os.Stdin,
 		Parser: gitdiff.NewParser(),
-		Viewer: bubbletea.NewViewer(lipgloss.DefaultTheme()),
+		Viewer: bubbletea.NewViewer(theme,
+			bubbletea.WithViewerLanguageDetector(detector),
+			bubbletea.WithViewerTokenizer(tokenizer),
+		),
 	}
 
 	if err := app.Run(ctx); err != nil {
