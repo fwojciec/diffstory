@@ -1848,3 +1848,112 @@ func extractLastLine(s string) string {
 	}
 	return ""
 }
+
+func TestModel_AppliesSyntaxHighlighting(t *testing.T) {
+	t.Parallel()
+
+	// Create a diff with Go code that will get syntax highlighted
+	diff := &diffview.Diff{
+		Files: []diffview.FileDiff{
+			{
+				OldPath:   "a/main.go",
+				NewPath:   "b/main.go",
+				Operation: diffview.FileModified,
+				Hunks: []diffview.Hunk{
+					{
+						OldStart: 1,
+						OldCount: 1,
+						NewStart: 1,
+						NewCount: 2,
+						Lines: []diffview.Line{
+							{Type: diffview.LineContext, Content: "package main"},
+							{Type: diffview.LineAdded, Content: "func main() {}", OldLineNum: 0, NewLineNum: 2},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	// Use TestTheme which has predictable colors:
+	// Keyword: #ff00ff (magenta) = RGB(255, 0, 255) -> "38;2;255;0;255"
+	theme := dv.TestTheme()
+
+	// Create a mock tokenizer that returns tokens with keyword style
+	tokenizer := &mockTokenizer{
+		TokenizeFn: func(language, source string) []diffview.Token {
+			if language != "Go" {
+				return nil
+			}
+			// For "package main" return two tokens
+			if source == "package main" {
+				return []diffview.Token{
+					{Text: "package", Style: diffview.Style{Foreground: "#ff00ff", Bold: true}},
+					{Text: " ", Style: diffview.Style{}},
+					{Text: "main", Style: diffview.Style{}},
+				}
+			}
+			// For "func main() {}" return tokens
+			if source == "func main() {}" {
+				return []diffview.Token{
+					{Text: "func", Style: diffview.Style{Foreground: "#ff00ff", Bold: true}},
+					{Text: " ", Style: diffview.Style{}},
+					{Text: "main", Style: diffview.Style{Foreground: "#0000ff"}},
+					{Text: "()", Style: diffview.Style{}},
+					{Text: " {}", Style: diffview.Style{}},
+				}
+			}
+			return nil
+		},
+	}
+
+	// Create a mock detector that returns "Go" for .go files
+	detector := &mockLanguageDetector{
+		DetectFromPathFn: func(path string) string {
+			if len(path) >= 3 && path[len(path)-3:] == ".go" {
+				return "Go"
+			}
+			return ""
+		},
+	}
+
+	m := bubbletea.NewModel(diff,
+		bubbletea.WithTheme(theme),
+		bubbletea.WithRenderer(trueColorRenderer()),
+		bubbletea.WithLanguageDetector(detector),
+		bubbletea.WithTokenizer(tokenizer),
+	)
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(80, 24),
+	)
+
+	// Wait for output with syntax highlighting
+	// The keyword "package" or "func" should have magenta foreground
+	// RGB(255, 0, 255) -> "38;2;255;0;255"
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		hasContent := bytes.Contains(out, []byte("package"))
+		hasMagentaKeyword := bytes.Contains(out, []byte("38;2;255;0;255"))
+		return hasContent && hasMagentaKeyword
+	})
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}
+
+// mockTokenizer implements diffview.Tokenizer for testing.
+type mockTokenizer struct {
+	TokenizeFn func(language, source string) []diffview.Token
+}
+
+func (m *mockTokenizer) Tokenize(language, source string) []diffview.Token {
+	return m.TokenizeFn(language, source)
+}
+
+// mockLanguageDetector implements diffview.LanguageDetector for testing.
+type mockLanguageDetector struct {
+	DetectFromPathFn func(path string) string
+}
+
+func (m *mockLanguageDetector) DetectFromPath(path string) string {
+	return m.DetectFromPathFn(path)
+}

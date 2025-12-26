@@ -1,7 +1,11 @@
 // Package lipgloss provides theme implementations using the Lipgloss styling library.
 package lipgloss
 
-import "github.com/fwojciec/diffview"
+import (
+	"fmt"
+
+	"github.com/fwojciec/diffview"
+)
 
 // Compile-time interface verification.
 var _ diffview.Theme = (*Theme)(nil)
@@ -35,9 +39,11 @@ func stylesFromPalette(p diffview.Palette) diffview.Styles {
 	return diffview.Styles{
 		Added: diffview.ColorPair{
 			Foreground: string(p.Added),
+			Background: blendWithBackground(p.Added, p.Background, 0.15),
 		},
 		Deleted: diffview.ColorPair{
 			Foreground: string(p.Deleted),
+			Background: blendWithBackground(p.Deleted, p.Background, 0.15),
 		},
 		Context: diffview.ColorPair{
 			Foreground: string(p.Context),
@@ -137,4 +143,27 @@ func mochaPalette() diffview.Palette {
 		UIForeground: "#a6adc8",
 		UIAccent:     "#89b4fa",
 	}
+}
+
+// blendWithBackground creates a subtle background color by blending
+// the accent color with the background color at the given ratio.
+// ratio of 0.15 means 15% accent, 85% background.
+func blendWithBackground(accent, background diffview.Color, ratio float64) string {
+	ar, ag, ab := parseHex(string(accent))
+	br, bg, bb := parseHex(string(background))
+
+	r := int(float64(ar)*ratio + float64(br)*(1-ratio))
+	g := int(float64(ag)*ratio + float64(bg)*(1-ratio))
+	b := int(float64(ab)*ratio + float64(bb)*(1-ratio))
+
+	return fmt.Sprintf("#%02x%02x%02x", r, g, b)
+}
+
+// parseHex parses a hex color string like "#rrggbb" into RGB components.
+func parseHex(hex string) (r, g, b int) {
+	if len(hex) != 7 || hex[0] != '#' {
+		return 0, 0, 0
+	}
+	_, _ = fmt.Sscanf(hex[1:], "%02x%02x%02x", &r, &g, &b)
+	return r, g, b
 }
