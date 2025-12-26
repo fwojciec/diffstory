@@ -1,17 +1,17 @@
-package difflib_test
+package worddiff_test
 
 import (
 	"testing"
 
 	"github.com/fwojciec/diffview"
-	"github.com/fwojciec/diffview/difflib"
+	"github.com/fwojciec/diffview/worddiff"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestTokenize(t *testing.T) {
 	t.Parallel()
 
-	d := difflib.NewDiffer()
+	d := worddiff.NewDiffer()
 
 	tests := []struct {
 		name     string
@@ -182,7 +182,7 @@ func TestTokenize(t *testing.T) {
 func TestDiff(t *testing.T) {
 	t.Parallel()
 
-	d := difflib.NewDiffer()
+	d := worddiff.NewDiffer()
 
 	t.Run("no partial identifier highlighting", func(t *testing.T) {
 		t.Parallel()
@@ -307,7 +307,7 @@ func TestDiff(t *testing.T) {
 }
 
 func BenchmarkDiffer_Diff(b *testing.B) {
-	d := difflib.NewDiffer()
+	d := worddiff.NewDiffer()
 
 	b.Run("identical", func(b *testing.B) {
 		// Fast path: identical strings should skip diffing
