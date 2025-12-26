@@ -939,7 +939,7 @@ func TestModel_RendersLinePrefixes(t *testing.T) {
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
 		hasContext := bytes.Contains(out, []byte(" unchanged"))
 		hasDeleted := bytes.Contains(out, []byte("-removed"))
-		hasAdded := bytes.Contains(out, []byte("added"))
+		hasAdded := bytes.Contains(out, []byte("+added"))
 		return hasContext && hasDeleted && hasAdded
 	})
 
@@ -1022,7 +1022,7 @@ func TestModel_AddedLinesHaveBackgroundColor(t *testing.T) {
 	// Wait for output with background color on added line
 	// True color backgrounds use ESC[48;2;R;G;Bm format
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		hasAddedLine := bytes.Contains(out, []byte("added line"))
+		hasAddedLine := bytes.Contains(out, []byte("+added line"))
 		hasBackgroundColor := bytes.Contains(out, []byte("48;2;"))
 		return hasAddedLine && hasBackgroundColor
 	})
@@ -1063,9 +1063,8 @@ func TestModel_DeletedLinesHaveBackgroundColor(t *testing.T) {
 
 	// Wait for output with background color on deleted line
 	// True color backgrounds use ESC[48;2;R;G;Bm format
-	// Note: prefix "-" is now rendered in a separate gutter column
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		hasDeletedLine := bytes.Contains(out, []byte("deleted line"))
+		hasDeletedLine := bytes.Contains(out, []byte("-deleted line"))
 		hasBackgroundColor := bytes.Contains(out, []byte("48;2;"))
 		return hasDeletedLine && hasBackgroundColor
 	})
@@ -1103,11 +1102,10 @@ func TestModel_BackgroundExtendsFullWidth(t *testing.T) {
 		teatest.WithInitialTermSize(80, 24),
 	)
 
-	// Background should extend beyond just the text "short"
+	// Background should extend beyond just the text "+short"
 	// The styled content should include padding spaces within the style
-	// Note: prefix "+" is now rendered in a separate gutter column
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		hasAddedLine := bytes.Contains(out, []byte("short"))
+		hasAddedLine := bytes.Contains(out, []byte("+short"))
 		// Check for padding spaces within styled region (spaces before reset code)
 		// Pattern: spaces followed by ESC[0m (reset)
 		hasStyledPadding := bytes.Contains(out, []byte("   \x1b[0m")) ||
@@ -1151,10 +1149,9 @@ func TestModel_BackgroundExtendsFullWidthWithUnicode(t *testing.T) {
 	)
 
 	// Background should extend full width even with Unicode content
-	// The line "日本語" should be padded with spaces within the styled region
-	// Note: prefix "+" is now rendered in a separate gutter column
+	// The line "+日本語" should be padded with spaces within the styled region
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		hasUnicodeLine := bytes.Contains(out, []byte("日本語"))
+		hasUnicodeLine := bytes.Contains(out, []byte("+日本語"))
 		// Check for padding spaces within styled region (spaces before reset code)
 		hasStyledPadding := bytes.Contains(out, []byte("   \x1b[0m")) ||
 			bytes.Contains(out, []byte("  \x1b[0m"))
@@ -1487,10 +1484,10 @@ func TestModel_RendersLineNumbersInGutter(t *testing.T) {
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
 		// Check for context line with both numbers
 		hasContext := bytes.Contains(out, []byte("10")) && bytes.Contains(out, []byte("context"))
-		// Check for deleted line with old number and dash
-		hasDeleted := bytes.Contains(out, []byte("11")) && bytes.Contains(out, []byte("deleted"))
-		// Check for added line with dash and new number
-		hasAdded := bytes.Contains(out, []byte("added"))
+		// Check for deleted line with old number and prefix
+		hasDeleted := bytes.Contains(out, []byte("11")) && bytes.Contains(out, []byte("-deleted"))
+		// Check for added line with new number and prefix
+		hasAdded := bytes.Contains(out, []byte("+added"))
 		return hasContext && hasDeleted && hasAdded
 	})
 
@@ -1713,8 +1710,7 @@ func TestModel_WithTheme(t *testing.T) {
 		},
 	}
 
-	// Use TestTheme which has pure green (#00ff00) for added lines
-	// Added lines now use neutral foreground with green-tinted background
+	// TestTheme uses neutral foreground (#ffffff) with green-tinted background for added lines
 	theme := dv.TestTheme()
 	m := bubbletea.NewModel(diff,
 		bubbletea.WithTheme(theme),
