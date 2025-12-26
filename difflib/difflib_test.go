@@ -3,6 +3,7 @@ package difflib_test
 import (
 	"testing"
 
+	"github.com/fwojciec/diffview"
 	"github.com/fwojciec/diffview/difflib"
 	"github.com/stretchr/testify/assert"
 )
@@ -176,4 +177,131 @@ func TestTokenize(t *testing.T) {
 			assert.Equal(t, tt.expected, got)
 		})
 	}
+}
+
+func TestDiff(t *testing.T) {
+	t.Parallel()
+
+	d := difflib.NewDiffer()
+
+	t.Run("no partial identifier highlighting", func(t *testing.T) {
+		t.Parallel()
+
+		// Core improvement: myVariable vs myValue should show entire tokens as changed,
+		// not just the differing characters (Va vs lue)
+		oldSegs, newSegs := d.Diff("myVariable", "myValue")
+
+		// Both should be single changed segments - no partial highlighting
+		assert.Equal(t, []diffview.Segment{{Text: "myVariable", Changed: true}}, oldSegs)
+		assert.Equal(t, []diffview.Segment{{Text: "myValue", Changed: true}}, newSegs)
+	})
+
+	t.Run("identical strings fast path", func(t *testing.T) {
+		t.Parallel()
+
+		oldSegs, newSegs := d.Diff("same text", "same text")
+
+		expected := []diffview.Segment{{Text: "same text", Changed: false}}
+		assert.Equal(t, expected, oldSegs)
+		assert.Equal(t, expected, newSegs)
+	})
+
+	t.Run("both empty strings", func(t *testing.T) {
+		t.Parallel()
+
+		oldSegs, newSegs := d.Diff("", "")
+
+		assert.Empty(t, oldSegs)
+		assert.Empty(t, newSegs)
+	})
+
+	t.Run("old empty new has text", func(t *testing.T) {
+		t.Parallel()
+
+		oldSegs, newSegs := d.Diff("", "new text")
+
+		assert.Empty(t, oldSegs)
+		assert.Equal(t, []diffview.Segment{{Text: "new text", Changed: true}}, newSegs)
+	})
+
+	t.Run("old has text new empty", func(t *testing.T) {
+		t.Parallel()
+
+		oldSegs, newSegs := d.Diff("old text", "")
+
+		assert.Equal(t, []diffview.Segment{{Text: "old text", Changed: true}}, oldSegs)
+		assert.Empty(t, newSegs)
+	})
+
+	t.Run("high similarity keeps word diff", func(t *testing.T) {
+		t.Parallel()
+
+		// return x + 1 vs return x + 2 - high similarity, show word diff
+		oldSegs, newSegs := d.Diff("return x + 1", "return x + 2")
+
+		// Should show common parts unchanged, only the number changed
+		assert.Equal(t, []diffview.Segment{
+			{Text: "return x + ", Changed: false},
+			{Text: "1", Changed: true},
+		}, oldSegs)
+		assert.Equal(t, []diffview.Segment{
+			{Text: "return x + ", Changed: false},
+			{Text: "2", Changed: true},
+		}, newSegs)
+	})
+
+	t.Run("low similarity returns full replacement", func(t *testing.T) {
+		t.Parallel()
+
+		// Completely different lines with no structural similarity
+		// "hello world" vs "12345 abcde" - no common tokens at all
+		oldSegs, newSegs := d.Diff("hello world", "12345 abcde")
+
+		// Low similarity - everything should be marked changed
+		assert.Equal(t, []diffview.Segment{{Text: "hello world", Changed: true}}, oldSegs)
+		assert.Equal(t, []diffview.Segment{{Text: "12345 abcde", Changed: true}}, newSegs)
+	})
+
+	t.Run("operators as tokens", func(t *testing.T) {
+		t.Parallel()
+
+		oldSegs, newSegs := d.Diff("x + y", "x - y")
+
+		// + and - are different operators, x and y and spaces are same
+		assert.Equal(t, []diffview.Segment{
+			{Text: "x ", Changed: false},
+			{Text: "+", Changed: true},
+			{Text: " y", Changed: false},
+		}, oldSegs)
+		assert.Equal(t, []diffview.Segment{
+			{Text: "x ", Changed: false},
+			{Text: "-", Changed: true},
+			{Text: " y", Changed: false},
+		}, newSegs)
+	})
+
+	t.Run("unicode support", func(t *testing.T) {
+		t.Parallel()
+
+		oldSegs, newSegs := d.Diff("hello 👋", "hello 🌍")
+
+		assert.Equal(t, []diffview.Segment{
+			{Text: "hello ", Changed: false},
+			{Text: "👋", Changed: true},
+		}, oldSegs)
+		assert.Equal(t, []diffview.Segment{
+			{Text: "hello ", Changed: false},
+			{Text: "🌍", Changed: true},
+		}, newSegs)
+	})
+
+	t.Run("another identifier pair getUserName vs getUserEmail", func(t *testing.T) {
+		t.Parallel()
+
+		oldSegs, newSegs := d.Diff("getUserName", "getUserEmail")
+
+		// Entire identifiers should be different, not partial
+		assert.Equal(t, []diffview.Segment{{Text: "getUserName", Changed: true}}, oldSegs)
+		assert.Equal(t, []diffview.Segment{{Text: "getUserEmail", Changed: true}}, newSegs)
+	})
 }
