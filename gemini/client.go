@@ -6,14 +6,19 @@ import (
 	"google.golang.org/genai"
 )
 
+// DefaultModel is the recommended Gemini model for story generation.
+const DefaultModel = "gemini-3-flash-preview"
+
 // Client wraps the Gemini genai.Client.
 type Client struct {
 	client *genai.Client
 }
 
-// NewClient creates a new Client. The API key is read from GEMINI_API_KEY env var.
-func NewClient(ctx context.Context) (*Client, error) {
-	client, err := genai.NewClient(ctx, nil)
+// NewClient creates a new Client with the given API key.
+func NewClient(ctx context.Context, apiKey string) (*Client, error) {
+	client, err := genai.NewClient(ctx, &genai.ClientConfig{
+		APIKey: apiKey,
+	})
 	if err != nil {
 		return nil, err
 	}

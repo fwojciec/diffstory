@@ -40,7 +40,7 @@ func TestGenerator_Generate_ReturnsStoryAnalysis(t *testing.T) {
 		},
 	}
 
-	gen := gemini.NewGenerator(mockClient, "gemini-2.0-flash")
+	gen := gemini.NewGenerator(mockClient, gemini.DefaultModel)
 	hunks := []diffview.AnnotatedHunk{
 		{ID: "h1", Hunk: diffview.Hunk{OldStart: 1, NewStart: 1, Lines: []diffview.Line{{Type: diffview.LineAdded, Content: "+func Auth() {}"}}}},
 	}
@@ -73,7 +73,7 @@ func TestGenerator_Generate_PropagatesAPIError(t *testing.T) {
 		},
 	}
 
-	gen := gemini.NewGenerator(mockClient, "gemini-2.0-flash")
+	gen := gemini.NewGenerator(mockClient, gemini.DefaultModel)
 	hunks := []diffview.AnnotatedHunk{{ID: "h1"}}
 
 	_, err := gen.Generate(context.Background(), hunks)
@@ -91,7 +91,7 @@ func TestGenerator_Generate_ReturnsErrorOnInvalidJSON(t *testing.T) {
 		},
 	}
 
-	gen := gemini.NewGenerator(mockClient, "gemini-2.0-flash")
+	gen := gemini.NewGenerator(mockClient, gemini.DefaultModel)
 	hunks := []diffview.AnnotatedHunk{{ID: "h1"}}
 
 	_, err := gen.Generate(context.Background(), hunks)
@@ -108,7 +108,7 @@ func TestGenerator_Generate_ReturnsErrorOnNilResponse(t *testing.T) {
 		},
 	}
 
-	gen := gemini.NewGenerator(mockClient, "gemini-2.0-flash")
+	gen := gemini.NewGenerator(mockClient, gemini.DefaultModel)
 	hunks := []diffview.AnnotatedHunk{{ID: "h1"}}
 
 	_, err := gen.Generate(context.Background(), hunks)
