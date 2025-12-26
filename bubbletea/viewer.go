@@ -11,7 +11,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/fwojciec/diffview"
-	"github.com/fwojciec/diffview/worddiff"
 )
 
 // Compile-time interface verification.
@@ -112,12 +111,12 @@ func NewModel(diff *diffview.Diff, opts ...ModelOption) Model {
 func defaultStyles() diffview.Styles {
 	return diffview.Styles{
 		Added: diffview.ColorPair{
-			Foreground: "#a6e3a1", // Green
-			Background: "#2d3f2d", // Subtle green background
+			Foreground: "#cdd6f4", // Normal text (neutral)
+			Background: "#2d3f2d", // Subtle green background (~15% blend)
 		},
 		Deleted: diffview.ColorPair{
-			Foreground: "#f38ba8", // Red
-			Background: "#3f2d2d", // Subtle red background
+			Foreground: "#cdd6f4", // Normal text (neutral)
+			Background: "#3f2d2d", // Subtle red background (~15% blend)
 		},
 		Context: diffview.ColorPair{
 			Foreground: "#cdd6f4", // Light gray
@@ -539,11 +538,6 @@ func renderDiff(cfg renderConfig) string {
 	deletedStyle := styleFromColorPair(styles.Deleted, renderer)
 	contextStyle := styleFromColorPair(styles.Context, renderer)
 	lineNumStyle := styleFromColorPair(styles.LineNumber, renderer)
-	addedHighlightStyle := styleFromColorPair(styles.AddedHighlight, renderer)
-	deletedHighlightStyle := styleFromColorPair(styles.DeletedHighlight, renderer)
-
-	// Word differ for inline highlighting
-	differ := worddiff.NewDiffer()
 
 	var sb strings.Builder
 	fileCount := 0
@@ -590,44 +584,14 @@ func renderDiff(cfg renderConfig) string {
 			sb.WriteString("\n")
 
 			// Render lines with gutter and prefixes
-			// Use index-based loop to detect deleted+added pairs
-			lines := hunk.Lines
-			for i := 0; i < len(lines); i++ {
-				line := lines[i]
+			for _, line := range hunk.Lines {
+				// Line number gutter
+				sb.WriteString(formatGutter(line.OldLineNum, line.NewLineNum, gutterWidth, lineNumStyle))
 
-				// Check for deleted+added pair for word-level diff
-				if line.Type == diffview.LineDeleted && i+1 < len(lines) && lines[i+1].Type == diffview.LineAdded {
-					deletedLine := line
-					addedLine := lines[i+1]
-
-					// Compute word-level diff
-					deletedContent := strings.TrimSuffix(deletedLine.Content, "\n")
-					addedContent := strings.TrimSuffix(addedLine.Content, "\n")
-					deletedSegs, addedSegs := differ.Diff(deletedContent, addedContent)
-
-					// Render deleted line with word highlighting
-					sb.WriteString(formatGutter(deletedLine.OldLineNum, deletedLine.NewLineNum, gutterWidth, lineNumStyle))
-					styledDeleted := renderLineWithSegments("-", deletedSegs, deletedStyle, deletedHighlightStyle, width)
-					sb.WriteString(styledDeleted)
-					sb.WriteString("\n")
-
-					// Render added line with word highlighting
-					sb.WriteString(formatGutter(addedLine.OldLineNum, addedLine.NewLineNum, gutterWidth, lineNumStyle))
-					styledAdded := renderLineWithSegments("+", addedSegs, addedStyle, addedHighlightStyle, width)
-					sb.WriteString(styledAdded)
-					sb.WriteString("\n")
-
-					// Skip the added line since we already processed it
-					i++
-					continue
-				}
-
-				// Standard line rendering (no word-level diff)
-				gutter := formatGutter(line.OldLineNum, line.NewLineNum, gutterWidth, lineNumStyle)
-				sb.WriteString(gutter)
-
+				// Get prefix and content
 				prefix := linePrefixFor(line.Type)
 				lineContent := strings.TrimSuffix(line.Content, "\n")
+				fullLine := prefix + lineContent
 
 				// Try to tokenize for syntax highlighting
 				var tokens []diffview.Token
@@ -637,7 +601,7 @@ func renderDiff(cfg renderConfig) string {
 
 				var styledLine string
 				if tokens != nil {
-					// Render with syntax highlighting
+					// Render with syntax highlighting (prefix + tokens)
 					var colors diffview.ColorPair
 					switch line.Type {
 					case diffview.LineAdded:
@@ -649,8 +613,7 @@ func renderDiff(cfg renderConfig) string {
 					}
 					styledLine = renderLineWithTokens(prefix, tokens, colors, renderer, width)
 				} else {
-					// Fallback to plain rendering
-					fullLine := prefix + lineContent
+					// Plain rendering - entire line including prefix
 					switch line.Type {
 					case diffview.LineAdded:
 						styledLine = addedStyle.Render(padLine(fullLine, width))
@@ -722,38 +685,6 @@ func renderLineWithTokens(prefix string, tokens []diffview.Token, colors diffvie
 	currentLen := lipgloss.Width(prefix)
 	for _, tok := range tokens {
 		currentLen += lipgloss.Width(tok.Text)
-	}
-
-	if currentLen < width {
-		padding := strings.Repeat(" ", width-currentLen)
-		sb.WriteString(baseStyle.Render(padding))
-	}
-
-	return sb.String()
-}
-
-// renderLineWithSegments renders a line with word-level highlighting.
-// Segments marked as Changed get the highlight style, others get the base style.
-func renderLineWithSegments(prefix string, segments []diffview.Segment, baseStyle, highlightStyle lipgloss.Style, width int) string {
-	var sb strings.Builder
-
-	// Render prefix with base style
-	sb.WriteString(baseStyle.Render(prefix))
-
-	// Render each segment with appropriate style
-	for _, seg := range segments {
-		if seg.Changed {
-			sb.WriteString(highlightStyle.Render(seg.Text))
-		} else {
-			sb.WriteString(baseStyle.Render(seg.Text))
-		}
-	}
-
-	// Calculate current length and pad if needed
-	// Note: We need to account for prefix length and Unicode display width
-	currentLen := lipgloss.Width(prefix)
-	for _, seg := range segments {
-		currentLen += lipgloss.Width(seg.Text)
 	}
 
 	if currentLen < width {

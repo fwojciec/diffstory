@@ -38,11 +38,11 @@ func NewTheme(p diffview.Palette) *Theme {
 func stylesFromPalette(p diffview.Palette) diffview.Styles {
 	return diffview.Styles{
 		Added: diffview.ColorPair{
-			Foreground: string(p.Added),
+			Foreground: string(p.Foreground),
 			Background: blendWithBackground(p.Added, p.Background, 0.15),
 		},
 		Deleted: diffview.ColorPair{
-			Foreground: string(p.Deleted),
+			Foreground: string(p.Foreground),
 			Background: blendWithBackground(p.Deleted, p.Background, 0.15),
 		},
 		Context: diffview.ColorPair{
