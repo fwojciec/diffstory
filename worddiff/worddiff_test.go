@@ -1,17 +1,17 @@
-package difflib_test
+package worddiff_test
 
 import (
 	"testing"
 
 	"github.com/fwojciec/diffview"
-	"github.com/fwojciec/diffview/difflib"
+	"github.com/fwojciec/diffview/worddiff"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestTokenize(t *testing.T) {
 	t.Parallel()
 
-	d := difflib.NewDiffer()
+	d := worddiff.NewDiffer()
 
 	tests := []struct {
 		name     string
@@ -72,6 +72,21 @@ func TestTokenize(t *testing.T) {
 			name:     "single quoted string",
 			input:    "'x'",
 			expected: []string{"'x'"},
+		},
+		{
+			name:     "escaped quote in double quoted string",
+			input:    `"say \"hello\""`,
+			expected: []string{`"say \"hello\""`},
+		},
+		{
+			name:     "escaped quote in single quoted string",
+			input:    `'it\'s'`,
+			expected: []string{`'it\'s'`},
+		},
+		{
+			name:     "escaped backslash in string",
+			input:    `"path\\to\\file"`,
+			expected: []string{`"path\\to\\file"`},
 		},
 
 		// Operators
@@ -168,6 +183,33 @@ func TestTokenize(t *testing.T) {
 			input:    "@decorator",
 			expected: []string{"@", "decorator"},
 		},
+
+		// UTF-8 multi-byte characters
+		{
+			name:     "emoji single character",
+			input:    "👋",
+			expected: []string{"👋"},
+		},
+		{
+			name:     "emoji in context",
+			input:    "hello 👋 world",
+			expected: []string{"hello", " ", "👋", " ", "world"},
+		},
+		{
+			name:     "multiple emojis",
+			input:    "👋🌍🎉",
+			expected: []string{"👋", "🌍", "🎉"},
+		},
+		{
+			name:     "chinese characters",
+			input:    "你好",
+			expected: []string{"你", "好"},
+		},
+		{
+			name:     "mixed unicode and ascii",
+			input:    "café",
+			expected: []string{"caf", "é"},
+		},
 	}
 
 	for _, tt := range tests {
@@ -182,7 +224,7 @@ func TestTokenize(t *testing.T) {
 func TestDiff(t *testing.T) {
 	t.Parallel()
 
-	d := difflib.NewDiffer()
+	d := worddiff.NewDiffer()
 
 	t.Run("no partial identifier highlighting", func(t *testing.T) {
 		t.Parallel()
@@ -307,7 +349,7 @@ func TestDiff(t *testing.T) {
 }
 
 func BenchmarkDiffer_Diff(b *testing.B) {
-	d := difflib.NewDiffer()
+	d := worddiff.NewDiffer()
 
 	b.Run("identical", func(b *testing.B) {
 		// Fast path: identical strings should skip diffing
