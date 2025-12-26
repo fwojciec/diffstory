@@ -57,7 +57,11 @@ func main() {
 	// Set up syntax highlighting
 	theme := lipgloss.DefaultTheme()
 	detector := chroma.NewDetector()
-	tokenizer, _ := chroma.NewTokenizer(chroma.StyleFromPalette(theme.Palette()))
+	tokenizer, err := chroma.NewTokenizer(chroma.StyleFromPalette(theme.Palette()))
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "Error setting up syntax highlighting:", err)
+		os.Exit(1)
+	}
 
 	app := &App{
 		Stdin:  os.Stdin,

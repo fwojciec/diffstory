@@ -164,6 +164,9 @@ func parseHex(hex string) (r, g, b int) {
 	if len(hex) != 7 || hex[0] != '#' {
 		return 0, 0, 0
 	}
-	_, _ = fmt.Sscanf(hex[1:], "%02x%02x%02x", &r, &g, &b)
+	n, err := fmt.Sscanf(hex[1:], "%02x%02x%02x", &r, &g, &b)
+	if err != nil || n != 3 {
+		return 0, 0, 0
+	}
 	return r, g, b
 }
