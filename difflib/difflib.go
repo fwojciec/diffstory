@@ -12,7 +12,7 @@ func NewDiffer() *Differ {
 	return &Differ{
 		tokenPattern: regexp.MustCompile(
 			`[a-zA-Z_][a-zA-Z0-9_]*|` + // identifiers
-				`[0-9]+\.?[0-9]*|` + // numbers
+				`[0-9]+\.[0-9]+|[0-9]+|` + // numbers (float or integer)
 				`"[^"]*"|'[^']*'|` + // string literals
 				`[+\-*/=<>!&|^%:]+|` + // operators (including :)
 				`[(){}\[\];,.]|` + // punctuation

@@ -50,6 +50,16 @@ func TestTokenize(t *testing.T) {
 			input:    "3.14",
 			expected: []string{"3.14"},
 		},
+		{
+			name:     "trailing dot not part of number",
+			input:    "123.",
+			expected: []string{"123", "."},
+		},
+		{
+			name:     "leading dot not part of number",
+			input:    ".5",
+			expected: []string{".", "5"},
+		},
 
 		// String literals
 		{
