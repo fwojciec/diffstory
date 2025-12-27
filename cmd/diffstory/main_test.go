@@ -460,3 +460,137 @@ new file mode 100644
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to get commit message")
 }
+
+func TestClassifyRunner_Run_ClassifiesAllCases(t *testing.T) {
+	t.Parallel()
+
+	// Create test cases (as if read from JSONL)
+	testCases := []diffview.EvalCase{
+		{
+			Input: diffview.ClassificationInput{
+				Commit: diffview.CommitInfo{Hash: "abc123", Repo: "testrepo", Message: "Fix bug"},
+				Diff:   diffview.Diff{Files: []diffview.FileDiff{{NewPath: "a.go"}}},
+			},
+			Story: nil,
+		},
+		{
+			Input: diffview.ClassificationInput{
+				Commit: diffview.CommitInfo{Hash: "def456", Repo: "testrepo", Message: "Add feature"},
+				Diff:   diffview.Diff{Files: []diffview.FileDiff{{NewPath: "b.go"}}},
+			},
+			Story: nil,
+		},
+	}
+
+	var classifyCalls int
+	var stdout bytes.Buffer
+	classifier := &main.ClassifyRunner{
+		Output: &stdout,
+		Cases:  testCases,
+		Classifier: &mock.StoryClassifier{
+			ClassifyFn: func(_ context.Context, input diffview.ClassificationInput) (*diffview.StoryClassification, error) {
+				classifyCalls++
+				return &diffview.StoryClassification{
+					ChangeType: "bugfix",
+					Summary:    "Fixed a bug in " + input.Commit.Hash,
+				}, nil
+			},
+		},
+	}
+
+	err := classifier.Run(context.Background())
+	require.NoError(t, err)
+
+	// Should have called classify for each case
+	assert.Equal(t, 2, classifyCalls)
+
+	// Output should be JSONL with classified stories
+	lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
+	require.Len(t, lines, 2)
+	assert.Contains(t, lines[0], `"Hash":"abc123"`)
+	assert.Contains(t, lines[0], `"change_type":"bugfix"`)
+	assert.Contains(t, lines[1], `"Hash":"def456"`)
+	assert.Contains(t, lines[1], `"change_type":"bugfix"`)
+}
+
+func TestClassifyRunner_Run_ClassifierError(t *testing.T) {
+	t.Parallel()
+
+	testCases := []diffview.EvalCase{
+		{
+			Input: diffview.ClassificationInput{
+				Commit: diffview.CommitInfo{Hash: "abc123"},
+				Diff:   diffview.Diff{Files: []diffview.FileDiff{{NewPath: "a.go"}}},
+			},
+		},
+	}
+
+	var stdout bytes.Buffer
+	classifier := &main.ClassifyRunner{
+		Output: &stdout,
+		Cases:  testCases,
+		Classifier: &mock.StoryClassifier{
+			ClassifyFn: func(_ context.Context, _ diffview.ClassificationInput) (*diffview.StoryClassification, error) {
+				return nil, errors.New("API rate limit exceeded")
+			},
+		},
+	}
+
+	err := classifier.Run(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "API rate limit exceeded")
+}
+
+func TestClassifyRunner_Run_PreservesExistingStories(t *testing.T) {
+	t.Parallel()
+
+	existingStory := &diffview.StoryClassification{
+		ChangeType: "feature",
+		Summary:    "Already classified",
+	}
+	testCases := []diffview.EvalCase{
+		{
+			Input: diffview.ClassificationInput{
+				Commit: diffview.CommitInfo{Hash: "abc123"},
+				Diff:   diffview.Diff{Files: []diffview.FileDiff{{NewPath: "a.go"}}},
+			},
+			Story: existingStory, // Already has a story
+		},
+		{
+			Input: diffview.ClassificationInput{
+				Commit: diffview.CommitInfo{Hash: "def456"},
+				Diff:   diffview.Diff{Files: []diffview.FileDiff{{NewPath: "b.go"}}},
+			},
+			Story: nil, // Needs classification
+		},
+	}
+
+	var classifyCalls int
+	var stdout bytes.Buffer
+	classifier := &main.ClassifyRunner{
+		Output: &stdout,
+		Cases:  testCases,
+		Classifier: &mock.StoryClassifier{
+			ClassifyFn: func(_ context.Context, _ diffview.ClassificationInput) (*diffview.StoryClassification, error) {
+				classifyCalls++
+				return &diffview.StoryClassification{
+					ChangeType: "bugfix",
+					Summary:    "Newly classified",
+				}, nil
+			},
+		},
+	}
+
+	err := classifier.Run(context.Background())
+	require.NoError(t, err)
+
+	// Should only call classify for the case without a story
+	assert.Equal(t, 1, classifyCalls)
+
+	lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
+	require.Len(t, lines, 2)
+	// First case should preserve original classification
+	assert.Contains(t, lines[0], `"summary":"Already classified"`)
+	// Second case should have new classification
+	assert.Contains(t, lines[1], `"summary":"Newly classified"`)
+}
