@@ -17,9 +17,9 @@ type DefaultFormatter struct{}
 func (f *DefaultFormatter) Format(input ClassificationInput) string {
 	var sb strings.Builder
 
-	// Commit message section
+	// Commit message section (uses first commit for backward compatibility)
 	sb.WriteString("<commit_message>\n")
-	sb.WriteString(input.Commit.Message)
+	sb.WriteString(input.FirstCommitMessage())
 	sb.WriteString("\n</commit_message>\n\n")
 
 	// Diff section

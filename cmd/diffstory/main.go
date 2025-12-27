@@ -79,10 +79,9 @@ func (c *Collector) Run(ctx context.Context) error {
 
 		evalCase := diffview.EvalCase{
 			Input: diffview.ClassificationInput{
-				Commit: diffview.CommitInfo{
-					Hash:    hash,
-					Repo:    c.RepoName,
-					Message: message,
+				Repo: c.RepoName,
+				Commits: []diffview.CommitBrief{
+					{Hash: hash, Message: message},
 				},
 				Diff: *diff,
 			},
