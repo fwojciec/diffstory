@@ -11,7 +11,6 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
-	"sync"
 	"syscall"
 	"time"
 
@@ -289,13 +288,11 @@ func (c *ClassifyRunner) runParallel(ctx context.Context) error {
 
 	// Collect results indexed by original position
 	results := make([]classifyResult, len(c.Cases))
-	var mu sync.Mutex
 
 	g, ctx := errgroup.WithContext(ctx)
 	g.SetLimit(c.Workers)
 
 	for i := range c.Cases {
-		i := i // capture loop variable
 		evalCase := c.Cases[i]
 
 		g.Go(func() error {
@@ -317,9 +314,7 @@ func (c *ClassifyRunner) runParallel(ctx context.Context) error {
 				result.result = &evalCase
 			}
 
-			mu.Lock()
 			results[i] = result
-			mu.Unlock()
 
 			return nil
 		})

@@ -886,6 +886,61 @@ new file mode 100644
 	assert.Contains(t, output, `"NewPath":"feature.go"`)
 }
 
+func TestClassifyRunner_Run_ParallelPreservesExistingStories(t *testing.T) {
+	t.Parallel()
+
+	existingStory := &diffview.StoryClassification{
+		ChangeType: "feature",
+		Summary:    "Already classified",
+	}
+	testCases := []diffview.EvalCase{
+		{
+			Input: diffview.ClassificationInput{
+				Commits: []diffview.CommitBrief{{Hash: "abc123"}},
+				Diff:    diffview.Diff{Files: []diffview.FileDiff{{NewPath: "a.go"}}},
+			},
+			Story: existingStory,
+		},
+		{
+			Input: diffview.ClassificationInput{
+				Commits: []diffview.CommitBrief{{Hash: "def456"}},
+				Diff:    diffview.Diff{Files: []diffview.FileDiff{{NewPath: "b.go"}}},
+			},
+			Story: nil,
+		},
+	}
+
+	var classifyCalls int
+	var stdout bytes.Buffer
+	classifier := &main.ClassifyRunner{
+		Output:  &stdout,
+		Cases:   testCases,
+		Workers: 4,
+		Classifier: &mock.StoryClassifier{
+			ClassifyFn: func(_ context.Context, _ diffview.ClassificationInput) (*diffview.StoryClassification, error) {
+				classifyCalls++
+				return &diffview.StoryClassification{
+					ChangeType: "bugfix",
+					Summary:    "Newly classified",
+				}, nil
+			},
+		},
+	}
+
+	err := classifier.Run(context.Background())
+	require.NoError(t, err)
+
+	// Should only call classify for the case without a story
+	assert.Equal(t, 1, classifyCalls)
+
+	lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
+	require.Len(t, lines, 2)
+	// First case should preserve original classification
+	assert.Contains(t, lines[0], `"summary":"Already classified"`)
+	// Second case should have new classification
+	assert.Contains(t, lines[1], `"summary":"Newly classified"`)
+}
+
 func TestClassifyRunner_Run_ParallelPreservesOrder(t *testing.T) {
 	t.Parallel()
 
