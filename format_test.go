@@ -44,10 +44,11 @@ func TestDefaultFormatter_Format(t *testing.T) {
 	formatter := &diffview.DefaultFormatter{}
 	result := formatter.Format(input)
 
-	// Check commit message section
-	assert.Contains(t, result, "<commit_message>")
-	assert.Contains(t, result, "Fix authentication token expiry")
-	assert.Contains(t, result, "</commit_message>")
+	// Check context section
+	assert.Contains(t, result, "<context>")
+	assert.Contains(t, result, "Repository: testrepo")
+	assert.Contains(t, result, "- abc123: Fix authentication token expiry")
+	assert.Contains(t, result, "</context>")
 
 	// Check diff section
 	assert.Contains(t, result, "<diff>")
@@ -178,4 +179,117 @@ func TestDefaultFormatter_Format_HunkIDsAreSequential(t *testing.T) {
 	assert.Equal(t, 1, h1Count, "Should have exactly one H1")
 	assert.Equal(t, 1, h2Count, "Should have exactly one H2")
 	assert.Equal(t, 1, h3Count, "Should have exactly one H3")
+}
+
+func TestDefaultFormatter_Format_ContextSection(t *testing.T) {
+	t.Parallel()
+
+	input := diffview.ClassificationInput{
+		Repo:   "diffview",
+		Branch: "diffview-zv1",
+		Commits: []diffview.CommitBrief{
+			{Hash: "af44c89", Message: "Address PR feedback"},
+			{Hash: "51fad8d", Message: "Fix blank lines"},
+		},
+		Diff: diffview.Diff{
+			Files: []diffview.FileDiff{
+				{
+					NewPath:   "main.go",
+					Operation: diffview.FileModified,
+					Hunks: []diffview.Hunk{
+						{Lines: []diffview.Line{{Type: diffview.LineAdded, Content: "// test\n"}}},
+					},
+				},
+			},
+		},
+	}
+
+	formatter := &diffview.DefaultFormatter{}
+	result := formatter.Format(input)
+
+	// Should have context section, not commit_message
+	assert.NotContains(t, result, "<commit_message>")
+	assert.Contains(t, result, "<context>")
+	assert.Contains(t, result, "</context>")
+
+	// Should have repo and branch
+	assert.Contains(t, result, "Repository: diffview")
+	assert.Contains(t, result, "Branch: diffview-zv1")
+
+	// Should have commits section with all commits
+	assert.Contains(t, result, "Commits:")
+	assert.Contains(t, result, "- af44c89: Address PR feedback")
+	assert.Contains(t, result, "- 51fad8d: Fix blank lines")
+}
+
+func TestDefaultFormatter_Format_ContextSection_EmptyBranch(t *testing.T) {
+	t.Parallel()
+
+	input := diffview.ClassificationInput{
+		Repo:   "diffview",
+		Branch: "", // Empty - single commit fallback mode
+		Commits: []diffview.CommitBrief{
+			{Hash: "abc123", Message: "Single commit"},
+		},
+		Diff: diffview.Diff{
+			Files: []diffview.FileDiff{
+				{
+					NewPath:   "main.go",
+					Operation: diffview.FileModified,
+					Hunks: []diffview.Hunk{
+						{Lines: []diffview.Line{{Type: diffview.LineAdded, Content: "// test\n"}}},
+					},
+				},
+			},
+		},
+	}
+
+	formatter := &diffview.DefaultFormatter{}
+	result := formatter.Format(input)
+
+	// Should have context section
+	assert.Contains(t, result, "<context>")
+	assert.Contains(t, result, "</context>")
+
+	// Should have repo but NOT branch line
+	assert.Contains(t, result, "Repository: diffview")
+	assert.NotContains(t, result, "Branch:")
+
+	// Should still have commit
+	assert.Contains(t, result, "- abc123: Single commit")
+}
+
+func TestDefaultFormatter_Format_ContextSection_EmptyCommits(t *testing.T) {
+	t.Parallel()
+
+	input := diffview.ClassificationInput{
+		Repo:    "diffview",
+		Branch:  "feature-branch",
+		Commits: []diffview.CommitBrief{}, // Empty
+		Diff: diffview.Diff{
+			Files: []diffview.FileDiff{
+				{
+					NewPath:   "main.go",
+					Operation: diffview.FileModified,
+					Hunks: []diffview.Hunk{
+						{Lines: []diffview.Line{{Type: diffview.LineAdded, Content: "// test\n"}}},
+					},
+				},
+			},
+		},
+	}
+
+	formatter := &diffview.DefaultFormatter{}
+	result := formatter.Format(input)
+
+	// Should have context section
+	assert.Contains(t, result, "<context>")
+	assert.Contains(t, result, "</context>")
+
+	// Should have repo and branch
+	assert.Contains(t, result, "Repository: diffview")
+	assert.Contains(t, result, "Branch: feature-branch")
+
+	// Should NOT have Commits section
+	assert.NotContains(t, result, "Commits:")
 }

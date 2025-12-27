@@ -17,10 +17,19 @@ type DefaultFormatter struct{}
 func (f *DefaultFormatter) Format(input ClassificationInput) string {
 	var sb strings.Builder
 
-	// Commit message section (uses first commit for backward compatibility)
-	sb.WriteString("<commit_message>\n")
-	sb.WriteString(input.FirstCommitMessage())
-	sb.WriteString("\n</commit_message>\n\n")
+	// Context section with PR metadata
+	sb.WriteString("<context>\n")
+	sb.WriteString(fmt.Sprintf("Repository: %s\n", input.Repo))
+	if input.Branch != "" {
+		sb.WriteString(fmt.Sprintf("Branch: %s\n", input.Branch))
+	}
+	if len(input.Commits) > 0 {
+		sb.WriteString("\nCommits:\n")
+		for _, c := range input.Commits {
+			sb.WriteString(fmt.Sprintf("- %s: %s\n", c.Hash, c.Message))
+		}
+	}
+	sb.WriteString("</context>\n\n")
 
 	// Diff section
 	sb.WriteString("<diff>\n")
