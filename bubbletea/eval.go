@@ -146,14 +146,14 @@ func (m EvalModel) handleReviewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case key.Matches(msg, m.keymap.NextUnjudged):
-		if idx := m.findNextUnjudged(); idx != -1 {
+		if idx := m.findNextUnjudged(); idx != -1 && idx != m.currentIndex {
 			m.currentIndex = idx
 			m.updateViewportContent()
 		}
 		return m, nil
 
 	case key.Matches(msg, m.keymap.PrevUnjudged):
-		if idx := m.findPrevUnjudged(); idx != -1 {
+		if idx := m.findPrevUnjudged(); idx != -1 && idx != m.currentIndex {
 			m.currentIndex = idx
 			m.updateViewportContent()
 		}
@@ -538,8 +538,8 @@ func (m EvalModel) renderStatusBar() string {
 		if !ok {
 			indicators = append(indicators, "○") // unjudged
 		} else if !j.Judged {
-			// Has judgment record but not explicitly passed/failed (e.g., critique only)
-			indicators = append(indicators, "●") // has-critique
+			// Has judgment record but not explicitly passed/failed
+			indicators = append(indicators, "●") // partial-judgment
 		} else {
 			judged++
 			if j.Pass {
