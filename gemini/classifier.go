@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/fwojciec/diffview"
 )
@@ -11,24 +12,47 @@ import (
 // Compile-time interface verification.
 var _ diffview.StoryClassifier = (*Classifier)(nil)
 
+// DefaultClassifyTimeout is the default timeout for a single classify call.
+const DefaultClassifyTimeout = 60 * time.Second
+
 // Classifier implements diffview.StoryClassifier using Google Gemini.
 type Classifier struct {
 	client    GenerativeClient
 	model     string
 	formatter diffview.PromptFormatter
+	timeout   time.Duration
+}
+
+// ClassifierOption configures a Classifier.
+type ClassifierOption func(*Classifier)
+
+// WithTimeout sets the timeout for API calls.
+func WithTimeout(d time.Duration) ClassifierOption {
+	return func(c *Classifier) {
+		c.timeout = d
+	}
 }
 
 // NewClassifier creates a new Classifier.
-func NewClassifier(client GenerativeClient, model string) *Classifier {
-	return &Classifier{
+func NewClassifier(client GenerativeClient, model string, opts ...ClassifierOption) *Classifier {
+	c := &Classifier{
 		client:    client,
 		model:     model,
 		formatter: &diffview.DefaultFormatter{},
+		timeout:   DefaultClassifyTimeout,
 	}
+	for _, opt := range opts {
+		opt(c)
+	}
+	return c
 }
 
 // Classify produces a StoryClassification from classification input.
 func (c *Classifier) Classify(ctx context.Context, input diffview.ClassificationInput) (*diffview.StoryClassification, error) {
+	// Apply timeout to context
+	ctx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
+
 	formattedInput := c.formatter.Format(input)
 	prompt := BuildClassificationPrompt(formattedInput)
 

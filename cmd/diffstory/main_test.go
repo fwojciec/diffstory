@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/fwojciec/diffview"
 	main "github.com/fwojciec/diffview/cmd/diffstory"
@@ -541,9 +542,10 @@ func TestClassifyRunner_Run_ClassifiesAllCases(t *testing.T) {
 	assert.Contains(t, lines[1], `"change_type":"bugfix"`)
 }
 
-func TestClassifyRunner_Run_ClassifierError(t *testing.T) {
+func TestClassifyRunner_Run_RetriesOnError(t *testing.T) {
 	t.Parallel()
 
+	var callCount int
 	testCases := []diffview.EvalCase{
 		{
 			Input: diffview.ClassificationInput{
@@ -553,20 +555,91 @@ func TestClassifyRunner_Run_ClassifierError(t *testing.T) {
 		},
 	}
 
-	var stdout bytes.Buffer
+	var stdout, stderr bytes.Buffer
 	classifier := &main.ClassifyRunner{
-		Output: &stdout,
-		Cases:  testCases,
+		Output:     &stdout,
+		ErrOutput:  &stderr,
+		Cases:      testCases,
+		MaxRetries: 3,
+		BackoffFn:  func(_ int) time.Duration { return 0 }, // No delay in tests
 		Classifier: &mock.StoryClassifier{
 			ClassifyFn: func(_ context.Context, _ diffview.ClassificationInput) (*diffview.StoryClassification, error) {
-				return nil, errors.New("API rate limit exceeded")
+				callCount++
+				if callCount < 3 {
+					return nil, errors.New("API rate limit exceeded")
+				}
+				// Succeed on third attempt
+				return &diffview.StoryClassification{
+					ChangeType: "bugfix",
+					Summary:    "Fixed after retry",
+				}, nil
 			},
 		},
 	}
 
 	err := classifier.Run(context.Background())
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "API rate limit exceeded")
+	require.NoError(t, err)
+	assert.Equal(t, 3, callCount)
+
+	lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
+	require.Len(t, lines, 1)
+	assert.Contains(t, lines[0], `"summary":"Fixed after retry"`)
+}
+
+func TestClassifyRunner_Run_SkipsAfterMaxRetries(t *testing.T) {
+	t.Parallel()
+
+	var callCount int
+	testCases := []diffview.EvalCase{
+		{
+			Input: diffview.ClassificationInput{
+				Commits: []diffview.CommitBrief{{Hash: "fail-case"}},
+				Diff:    diffview.Diff{Files: []diffview.FileDiff{{NewPath: "a.go"}}},
+			},
+		},
+		{
+			Input: diffview.ClassificationInput{
+				Commits: []diffview.CommitBrief{{Hash: "success-case"}},
+				Diff:    diffview.Diff{Files: []diffview.FileDiff{{NewPath: "b.go"}}},
+			},
+		},
+	}
+
+	var stdout, stderr bytes.Buffer
+	classifier := &main.ClassifyRunner{
+		Output:     &stdout,
+		ErrOutput:  &stderr,
+		Cases:      testCases,
+		MaxRetries: 3,
+		BackoffFn:  func(_ int) time.Duration { return 0 }, // No delay in tests
+		Classifier: &mock.StoryClassifier{
+			ClassifyFn: func(_ context.Context, input diffview.ClassificationInput) (*diffview.StoryClassification, error) {
+				callCount++
+				if input.FirstCommitHash() == "fail-case" {
+					return nil, errors.New("persistent error")
+				}
+				return &diffview.StoryClassification{
+					ChangeType: "feature",
+					Summary:    "Success",
+				}, nil
+			},
+		},
+	}
+
+	err := classifier.Run(context.Background())
+	require.NoError(t, err)
+
+	// First case: 3 retries, second case: 1 call
+	assert.Equal(t, 4, callCount)
+
+	// Only successful case should be in output
+	lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
+	require.Len(t, lines, 1)
+	assert.Contains(t, lines[0], `"hash":"success-case"`)
+
+	// Warning should be in stderr
+	assert.Contains(t, stderr.String(), "fail-case")
+	assert.Contains(t, stderr.String(), "skipping")
 }
 
 func TestClassifyRunner_Run_PreservesExistingStories(t *testing.T) {

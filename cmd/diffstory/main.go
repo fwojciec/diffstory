@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/fwojciec/diffview"
 	"github.com/fwojciec/diffview/gemini"
@@ -207,25 +208,45 @@ func ParseBranchFromMergeMessage(message string) string {
 	return userBranch[slashIdx+1:]
 }
 
+// DefaultMaxRetries is the default number of retry attempts for classification.
+const DefaultMaxRetries = 3
+
 // ClassifyRunner classifies eval cases using an LLM classifier.
 type ClassifyRunner struct {
 	Output     io.Writer
+	ErrOutput  io.Writer
 	Cases      []diffview.EvalCase
 	Classifier diffview.StoryClassifier
+	MaxRetries int
+	// BackoffFn returns the backoff duration for a given attempt (1-indexed).
+	// If nil, uses exponential backoff (1s, 2s, 4s...).
+	BackoffFn func(attempt int) time.Duration
 }
 
 // Run classifies each case and writes JSONL output.
+// Cases that fail after max retries are skipped with a warning.
 func (c *ClassifyRunner) Run(ctx context.Context) error {
 	encoder := json.NewEncoder(c.Output)
+	maxRetries := c.MaxRetries
+	if maxRetries == 0 {
+		maxRetries = DefaultMaxRetries
+	}
+	errOut := c.ErrOutput
+	if errOut == nil {
+		errOut = os.Stderr
+	}
 
 	for i := range c.Cases {
 		evalCase := c.Cases[i]
 
 		// Skip cases that already have a story
 		if evalCase.Story == nil {
-			story, err := c.Classifier.Classify(ctx, evalCase.Input)
+			story, err := c.classifyWithRetry(ctx, evalCase.Input, maxRetries)
 			if err != nil {
-				return err
+				// Log warning and skip this case
+				fmt.Fprintf(errOut, "warning: skipping case %s after %d retries: %v\n",
+					evalCase.Input.FirstCommitHash(), maxRetries, err)
+				continue
 			}
 			evalCase.Story = story
 		}
@@ -236,6 +257,43 @@ func (c *ClassifyRunner) Run(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// classifyWithRetry attempts classification with exponential backoff.
+func (c *ClassifyRunner) classifyWithRetry(ctx context.Context, input diffview.ClassificationInput, maxRetries int) (*diffview.StoryClassification, error) {
+	backoffFn := c.BackoffFn
+	if backoffFn == nil {
+		backoffFn = func(attempt int) time.Duration {
+			return time.Duration(1<<(attempt-1)) * time.Second
+		}
+	}
+
+	var lastErr error
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		// Check for context cancellation before each attempt
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+		}
+
+		story, err := c.Classifier.Classify(ctx, input)
+		if err == nil {
+			return story, nil
+		}
+		lastErr = err
+
+		// Don't sleep after last attempt
+		if attempt < maxRetries {
+			backoff := backoffFn(attempt)
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(backoff):
+			}
+		}
+	}
+	return nil, lastErr
 }
 
 // countLinesChanged returns the total number of added + deleted lines in a diff.
