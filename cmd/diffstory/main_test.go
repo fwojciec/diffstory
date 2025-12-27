@@ -241,10 +241,10 @@ index 0000000..e69de29
 	lines := strings.Split(strings.TrimSpace(output), "\n")
 	require.Len(t, lines, 1)
 
-	// Line should contain commit hash and diff files
-	assert.Contains(t, lines[0], `"Hash":"abc1234"`)
-	assert.Contains(t, lines[0], `"Repo":"testrepo"`)
-	assert.Contains(t, lines[0], `"Message":"Add hello function"`)
+	// Line should contain commit hash and diff files (new lowercase JSON keys)
+	assert.Contains(t, lines[0], `"hash":"abc1234"`)
+	assert.Contains(t, lines[0], `"repo":"testrepo"`)
+	assert.Contains(t, lines[0], `"message":"Add hello function"`)
 	assert.Contains(t, lines[0], `"Files"`)
 }
 
@@ -294,8 +294,8 @@ new file mode 100644
 
 	lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
 	require.Len(t, lines, 2)
-	assert.Contains(t, lines[0], `"Hash":"commit1"`)
-	assert.Contains(t, lines[1], `"Hash":"commit2"`)
+	assert.Contains(t, lines[0], `"hash":"commit1"`)
+	assert.Contains(t, lines[1], `"hash":"commit2"`)
 }
 
 func TestCollector_Run_IncludesFilePaths(t *testing.T) {
@@ -425,7 +425,7 @@ new file mode 100644
 	lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
 	// Should only have 1 line (real commit), merge commit skipped
 	require.Len(t, lines, 1)
-	assert.Contains(t, lines[0], `"Hash":"real-commit"`)
+	assert.Contains(t, lines[0], `"hash":"real-commit"`)
 }
 
 func TestCollector_Run_GitMessageError(t *testing.T) {
@@ -468,15 +468,15 @@ func TestClassifyRunner_Run_ClassifiesAllCases(t *testing.T) {
 	testCases := []diffview.EvalCase{
 		{
 			Input: diffview.ClassificationInput{
-				Commit: diffview.CommitInfo{Hash: "abc123", Repo: "testrepo", Message: "Fix bug"},
-				Diff:   diffview.Diff{Files: []diffview.FileDiff{{NewPath: "a.go"}}},
+				Repo: "testrepo", Commits: []diffview.CommitBrief{{Hash: "abc123", Message: "Fix bug"}},
+				Diff: diffview.Diff{Files: []diffview.FileDiff{{NewPath: "a.go"}}},
 			},
 			Story: nil,
 		},
 		{
 			Input: diffview.ClassificationInput{
-				Commit: diffview.CommitInfo{Hash: "def456", Repo: "testrepo", Message: "Add feature"},
-				Diff:   diffview.Diff{Files: []diffview.FileDiff{{NewPath: "b.go"}}},
+				Repo: "testrepo", Commits: []diffview.CommitBrief{{Hash: "def456", Message: "Add feature"}},
+				Diff: diffview.Diff{Files: []diffview.FileDiff{{NewPath: "b.go"}}},
 			},
 			Story: nil,
 		},
@@ -492,7 +492,7 @@ func TestClassifyRunner_Run_ClassifiesAllCases(t *testing.T) {
 				classifyCalls++
 				return &diffview.StoryClassification{
 					ChangeType: "bugfix",
-					Summary:    "Fixed a bug in " + input.Commit.Hash,
+					Summary:    "Fixed a bug in " + input.FirstCommitHash(),
 				}, nil
 			},
 		},
@@ -507,9 +507,9 @@ func TestClassifyRunner_Run_ClassifiesAllCases(t *testing.T) {
 	// Output should be JSONL with classified stories
 	lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
 	require.Len(t, lines, 2)
-	assert.Contains(t, lines[0], `"Hash":"abc123"`)
+	assert.Contains(t, lines[0], `"hash":"abc123"`)
 	assert.Contains(t, lines[0], `"change_type":"bugfix"`)
-	assert.Contains(t, lines[1], `"Hash":"def456"`)
+	assert.Contains(t, lines[1], `"hash":"def456"`)
 	assert.Contains(t, lines[1], `"change_type":"bugfix"`)
 }
 
@@ -519,8 +519,8 @@ func TestClassifyRunner_Run_ClassifierError(t *testing.T) {
 	testCases := []diffview.EvalCase{
 		{
 			Input: diffview.ClassificationInput{
-				Commit: diffview.CommitInfo{Hash: "abc123"},
-				Diff:   diffview.Diff{Files: []diffview.FileDiff{{NewPath: "a.go"}}},
+				Commits: []diffview.CommitBrief{{Hash: "abc123"}},
+				Diff:    diffview.Diff{Files: []diffview.FileDiff{{NewPath: "a.go"}}},
 			},
 		},
 	}
@@ -551,15 +551,15 @@ func TestClassifyRunner_Run_PreservesExistingStories(t *testing.T) {
 	testCases := []diffview.EvalCase{
 		{
 			Input: diffview.ClassificationInput{
-				Commit: diffview.CommitInfo{Hash: "abc123"},
-				Diff:   diffview.Diff{Files: []diffview.FileDiff{{NewPath: "a.go"}}},
+				Commits: []diffview.CommitBrief{{Hash: "abc123"}},
+				Diff:    diffview.Diff{Files: []diffview.FileDiff{{NewPath: "a.go"}}},
 			},
 			Story: existingStory, // Already has a story
 		},
 		{
 			Input: diffview.ClassificationInput{
-				Commit: diffview.CommitInfo{Hash: "def456"},
-				Diff:   diffview.Diff{Files: []diffview.FileDiff{{NewPath: "b.go"}}},
+				Commits: []diffview.CommitBrief{{Hash: "def456"}},
+				Diff:    diffview.Diff{Files: []diffview.FileDiff{{NewPath: "b.go"}}},
 			},
 			Story: nil, // Needs classification
 		},

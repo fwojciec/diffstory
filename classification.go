@@ -2,17 +2,37 @@ package diffview
 
 import "context"
 
-// CommitInfo captures metadata about a commit for classification.
-type CommitInfo struct {
-	Hash    string `json:"Hash"`
-	Repo    string `json:"Repo"`
-	Message string `json:"Message"`
+// CommitBrief captures essential commit metadata for PR context.
+type CommitBrief struct {
+	Hash    string `json:"hash"`
+	Message string `json:"message"`
 }
 
 // ClassificationInput is the complete input for story classification.
+// It represents a PR's worth of changes: multiple commits with their combined diff.
 type ClassificationInput struct {
-	Commit CommitInfo `json:"Commit"`
-	Diff   Diff       `json:"Diff"`
+	Repo    string        `json:"repo"`
+	Branch  string        `json:"branch"`
+	Commits []CommitBrief `json:"commits"`
+	Diff    Diff          `json:"diff"`
+}
+
+// FirstCommitMessage returns the message of the first commit, or empty if none.
+// This is a migration helper - prefer iterating Commits directly.
+func (c ClassificationInput) FirstCommitMessage() string {
+	if len(c.Commits) == 0 {
+		return ""
+	}
+	return c.Commits[0].Message
+}
+
+// FirstCommitHash returns the hash of the first commit, or empty if none.
+// This is a migration helper - prefer iterating Commits directly.
+func (c ClassificationInput) FirstCommitHash() string {
+	if len(c.Commits) == 0 {
+		return ""
+	}
+	return c.Commits[0].Hash
 }
 
 // StoryClassification is the LLM's structured output for a diff.

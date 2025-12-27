@@ -12,10 +12,9 @@ func TestDefaultFormatter_Format(t *testing.T) {
 	t.Parallel()
 
 	input := diffview.ClassificationInput{
-		Commit: diffview.CommitInfo{
-			Hash:    "abc123",
-			Repo:    "testrepo",
-			Message: "Fix authentication token expiry\n\nTokens were not being refreshed properly.",
+		Repo: "testrepo",
+		Commits: []diffview.CommitBrief{
+			{Hash: "abc123", Message: "Fix authentication token expiry\n\nTokens were not being refreshed properly."},
 		},
 		Diff: diffview.Diff{
 			Files: []diffview.FileDiff{
@@ -69,10 +68,9 @@ func TestDefaultFormatter_Format_MultipleFiles(t *testing.T) {
 	t.Parallel()
 
 	input := diffview.ClassificationInput{
-		Commit: diffview.CommitInfo{
-			Hash:    "def456",
-			Repo:    "testrepo",
-			Message: "Add new feature",
+		Repo: "testrepo",
+		Commits: []diffview.CommitBrief{
+			{Hash: "def456", Message: "Add new feature"},
 		},
 		Diff: diffview.Diff{
 			Files: []diffview.FileDiff{
@@ -115,10 +113,9 @@ func TestDefaultFormatter_Format_DeletedFile(t *testing.T) {
 	t.Parallel()
 
 	input := diffview.ClassificationInput{
-		Commit: diffview.CommitInfo{
-			Hash:    "ghi789",
-			Repo:    "testrepo",
-			Message: "Remove old file",
+		Repo: "testrepo",
+		Commits: []diffview.CommitBrief{
+			{Hash: "ghi789", Message: "Remove old file"},
 		},
 		Diff: diffview.Diff{
 			Files: []diffview.FileDiff{
@@ -146,7 +143,9 @@ func TestDefaultFormatter_Format_HunkIDsAreSequential(t *testing.T) {
 	t.Parallel()
 
 	input := diffview.ClassificationInput{
-		Commit: diffview.CommitInfo{Message: "test"},
+		Commits: []diffview.CommitBrief{
+			{Message: "test"},
+		},
 		Diff: diffview.Diff{
 			Files: []diffview.FileDiff{
 				{

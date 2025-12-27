@@ -42,10 +42,9 @@ func TestClassifier_Classify_ReturnsStoryClassification(t *testing.T) {
 
 	classifier := gemini.NewClassifier(mockClient, gemini.DefaultModel)
 	input := diffview.ClassificationInput{
-		Commit: diffview.CommitInfo{
-			Hash:    "abc123",
-			Repo:    "test",
-			Message: "Fix token expiry",
+		Repo: "test",
+		Commits: []diffview.CommitBrief{
+			{Hash: "abc123", Message: "Fix token expiry"},
 		},
 		Diff: diffview.Diff{
 			Files: []diffview.FileDiff{
@@ -93,7 +92,7 @@ func TestClassifier_Classify_PropagatesAPIError(t *testing.T) {
 
 	classifier := gemini.NewClassifier(mockClient, gemini.DefaultModel)
 	input := diffview.ClassificationInput{
-		Commit: diffview.CommitInfo{Message: "test"},
+		Commits: []diffview.CommitBrief{{Message: "test"}},
 	}
 
 	_, err := classifier.Classify(context.Background(), input)
@@ -113,7 +112,7 @@ func TestClassifier_Classify_ReturnsErrorOnInvalidJSON(t *testing.T) {
 
 	classifier := gemini.NewClassifier(mockClient, gemini.DefaultModel)
 	input := diffview.ClassificationInput{
-		Commit: diffview.CommitInfo{Message: "test"},
+		Commits: []diffview.CommitBrief{{Message: "test"}},
 	}
 
 	_, err := classifier.Classify(context.Background(), input)
@@ -133,7 +132,7 @@ func TestClassifier_Classify_ReturnsErrorOnNilResponse(t *testing.T) {
 
 	classifier := gemini.NewClassifier(mockClient, gemini.DefaultModel)
 	input := diffview.ClassificationInput{
-		Commit: diffview.CommitInfo{Message: "test"},
+		Commits: []diffview.CommitBrief{{Message: "test"}},
 	}
 
 	_, err := classifier.Classify(context.Background(), input)
