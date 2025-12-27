@@ -2,6 +2,7 @@ package bubbletea
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -194,6 +195,9 @@ func (m *EvalModel) handleWindowSize(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd)
 	// Calculate panel heights
 	// Reserve: judgment bar (1), status bar (2), borders (3)
 	usableHeight := msg.Height - 6
+	if usableHeight < 2 {
+		usableHeight = 2 // Minimum height for tiny terminals
+	}
 	diffHeight := usableHeight * 50 / 100
 	storyHeight := usableHeight - diffHeight
 
@@ -255,10 +259,18 @@ func (m *EvalModel) recordJudgment(pass bool) {
 	}
 
 	c := m.cases[m.currentIndex]
+
+	// Preserve existing critique when toggling pass/fail
+	var critique string
+	if existing := m.judgments[c.Commit]; existing != nil {
+		critique = existing.Critique
+	}
+
 	j := &diffview.Judgment{
 		Commit:   c.Commit,
 		Index:    m.currentIndex,
 		Pass:     pass,
+		Critique: critique,
 		JudgedAt: time.Now(),
 	}
 	m.judgments[c.Commit] = j
@@ -274,6 +286,10 @@ func (m *EvalModel) persistJudgments() {
 	for _, j := range m.judgments {
 		judgments = append(judgments, *j)
 	}
+	// Sort by index for deterministic output
+	sort.Slice(judgments, func(i, k int) bool {
+		return judgments[i].Index < judgments[k].Index
+	})
 	// Best-effort save - errors are logged but don't block the UI
 	// TODO: Consider adding error display in status bar
 	_ = m.store.Save(m.outputPath, judgments)
@@ -363,7 +379,7 @@ func (m EvalModel) renderStatusBar() string {
 
 	caseInfo := fmt.Sprintf("case %d/%d", m.currentIndex+1, len(m.cases))
 	progress := fmt.Sprintf("%d/%d reviewed", judged, len(m.cases))
-	help := "[d]iff [s]tory [p]ass [f]ail [c]ritique [j/k]nav [q]uit"
+	help := "[d]iff [s]tory [p]ass [f]ail [j/k]nav [q]uit"
 
 	return fmt.Sprintf("%s │ %s │ %s", caseInfo, progress, help)
 }

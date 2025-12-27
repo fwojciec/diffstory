@@ -132,11 +132,10 @@ func TestEvalModel_NavigationWithJK(t *testing.T) {
 	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
 }
 
-func TestEvalModel_NavigationStaysOnFirstCase(t *testing.T) {
+func TestEvalModel_NavigationBetweenCases(t *testing.T) {
 	t.Parallel()
 
-	// This tests the boundary behavior by verifying that we can always navigate
-	// back to the first case and the display is consistent.
+	// Tests navigation between cases: forward with j, backward with k.
 	cases := []diffview.EvalCase{
 		{Commit: "first", Story: diffview.StoryAnalysis{Summary: "First summary"}},
 		{Commit: "second", Story: diffview.StoryAnalysis{Summary: "Second summary"}},
