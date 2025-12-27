@@ -4,15 +4,15 @@ import "context"
 
 // CommitInfo captures metadata about a commit for classification.
 type CommitInfo struct {
-	Hash    string
-	Repo    string
-	Message string
+	Hash    string `json:"Hash"`
+	Repo    string `json:"Repo"`
+	Message string `json:"Message"`
 }
 
 // ClassificationInput is the complete input for story classification.
 type ClassificationInput struct {
-	Commit CommitInfo
-	Diff   Diff
+	Commit CommitInfo `json:"Commit"`
+	Diff   Diff       `json:"Diff"`
 }
 
 // StoryClassification is the LLM's structured output for a diff.
