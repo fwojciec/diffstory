@@ -2,7 +2,6 @@
 package eval
 
 import (
-	"context"
 	"os"
 	"testing"
 
@@ -24,7 +23,7 @@ func New(judge diffview.RubricJudge) *Eval {
 func (e *Eval) AssertRubric(tb testing.TB, criterion, output string) {
 	tb.Helper()
 
-	result, err := e.judge.Judge(context.Background(), criterion, output)
+	result, err := e.judge.Judge(tb.Context(), criterion, output)
 	if err != nil {
 		tb.Errorf("rubric evaluation failed: %v", err)
 		return
