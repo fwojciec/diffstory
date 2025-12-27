@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/fwojciec/diffview"
 	"github.com/fwojciec/diffview/gemini"
@@ -199,4 +200,60 @@ func TestBuildClassificationConfig_SetsJSONResponseType(t *testing.T) {
 	config := gemini.BuildClassificationConfig()
 
 	assert.Equal(t, "application/json", config.ResponseMIMEType)
+}
+
+func TestClassifier_Classify_TimesOutOnSlowAPI(t *testing.T) {
+	t.Parallel()
+
+	// Arrange: mock that blocks longer than timeout
+	mockClient := &gemini.MockGenerativeClient{
+		GenerateContentFn: func(ctx context.Context, model string, contents []*gemini.Content, config *gemini.GenerateContentConfig) (*gemini.GenerateContentResponse, error) {
+			// Block until context is cancelled
+			<-ctx.Done()
+			return nil, ctx.Err()
+		},
+	}
+
+	// Use very short timeout for test
+	timeout := 10 * time.Millisecond
+	classifier := gemini.NewClassifier(mockClient, gemini.DefaultModel, gemini.WithTimeout(timeout))
+	input := diffview.ClassificationInput{
+		Commits: []diffview.CommitBrief{{Message: "test"}},
+	}
+
+	// Act
+	_, err := classifier.Classify(context.Background(), input)
+
+	// Assert
+	require.Error(t, err)
+	assert.ErrorIs(t, err, context.DeadlineExceeded)
+}
+
+func TestClassifier_Classify_RespectsCallerContextDeadline(t *testing.T) {
+	t.Parallel()
+
+	// Arrange: caller has shorter deadline than classifier timeout
+	mockClient := &gemini.MockGenerativeClient{
+		GenerateContentFn: func(ctx context.Context, model string, contents []*gemini.Content, config *gemini.GenerateContentConfig) (*gemini.GenerateContentResponse, error) {
+			<-ctx.Done()
+			return nil, ctx.Err()
+		},
+	}
+
+	// Classifier has long timeout, but caller context is short
+	classifier := gemini.NewClassifier(mockClient, gemini.DefaultModel, gemini.WithTimeout(time.Hour))
+	input := diffview.ClassificationInput{
+		Commits: []diffview.CommitBrief{{Message: "test"}},
+	}
+
+	// Caller's context has very short deadline
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel()
+
+	// Act
+	_, err := classifier.Classify(ctx, input)
+
+	// Assert: should timeout from caller's context, not classifier's
+	require.Error(t, err)
+	assert.ErrorIs(t, err, context.DeadlineExceeded)
 }
