@@ -17,6 +17,7 @@ import (
 	"github.com/fwojciec/diffview/gemini"
 	"github.com/fwojciec/diffview/git"
 	"github.com/fwojciec/diffview/gitdiff"
+	"github.com/fwojciec/diffview/jsonl"
 )
 
 // ErrNoChanges is returned when the diff contains no changes to analyze.
@@ -87,6 +88,37 @@ func (c *Collector) Run(ctx context.Context) error {
 			},
 			Story: nil, // Not classified yet
 		}
+		if err := encoder.Encode(evalCase); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// ClassifyRunner classifies eval cases using an LLM classifier.
+type ClassifyRunner struct {
+	Output     io.Writer
+	Cases      []diffview.EvalCase
+	Classifier diffview.StoryClassifier
+}
+
+// Run classifies each case and writes JSONL output.
+func (c *ClassifyRunner) Run(ctx context.Context) error {
+	encoder := json.NewEncoder(c.Output)
+
+	for i := range c.Cases {
+		evalCase := c.Cases[i]
+
+		// Skip cases that already have a story
+		if evalCase.Story == nil {
+			story, err := c.Classifier.Classify(ctx, evalCase.Input)
+			if err != nil {
+				return err
+			}
+			evalCase.Story = story
+		}
+
 		if err := encoder.Encode(evalCase); err != nil {
 			return err
 		}
@@ -175,7 +207,7 @@ func main() {
 
 func run() error {
 	if len(os.Args) < 2 {
-		return fmt.Errorf("usage: diffstory <command> [options]\n\nCommands:\n  analyze  Analyze a diff file\n  collect  Extract diffs from git history")
+		return fmt.Errorf("usage: diffstory <command> [options]\n\nCommands:\n  analyze   Analyze a diff file\n  collect   Extract diffs from git history\n  classify  Classify eval cases from JSONL")
 	}
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -186,6 +218,8 @@ func run() error {
 		return runAnalyze(ctx)
 	case "collect":
 		return runCollect(ctx)
+	case "classify":
+		return runClassify(ctx)
 	default:
 		return fmt.Errorf("unknown command: %s", os.Args[1])
 	}
@@ -268,4 +302,46 @@ func runCollect(ctx context.Context) error {
 	}
 
 	return collector.Run(ctx)
+}
+
+func runClassify(ctx context.Context) error {
+	if len(os.Args) < 3 {
+		return fmt.Errorf("usage: diffstory classify <input.jsonl>")
+	}
+
+	inputPath := os.Args[2]
+
+	// Check for API key
+	apiKey := os.Getenv("GEMINI_API_KEY")
+	if apiKey == "" {
+		return fmt.Errorf("GEMINI_API_KEY environment variable required")
+	}
+
+	// Load cases from JSONL
+	loader := jsonl.NewLoader()
+	cases, err := loader.Load(inputPath)
+	if err != nil {
+		return fmt.Errorf("failed to load cases: %w", err)
+	}
+
+	if len(cases) == 0 {
+		return fmt.Errorf("no cases found in %s", inputPath)
+	}
+
+	// Set up Gemini classifier
+	client, err := gemini.NewClient(ctx, apiKey)
+	if err != nil {
+		return fmt.Errorf("failed to create Gemini client: %w", err)
+	}
+	defer client.Close()
+
+	classifier := gemini.NewClassifier(client, gemini.DefaultModel)
+
+	runner := &ClassifyRunner{
+		Output:     os.Stdout,
+		Cases:      cases,
+		Classifier: classifier,
+	}
+
+	return runner.Run(ctx)
 }

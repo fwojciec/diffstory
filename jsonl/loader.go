@@ -22,6 +22,10 @@ func NewLoader() *Loader {
 	return &Loader{}
 }
 
+// maxLineSize is the maximum size for a single JSONL line (1MB).
+// This accommodates large diffs while preventing memory issues.
+const maxLineSize = 1024 * 1024
+
 // Load reads a JSONL file and returns all EvalCase records.
 func (l *Loader) Load(path string) ([]diffview.EvalCase, error) {
 	f, err := os.Open(path)
@@ -32,6 +36,7 @@ func (l *Loader) Load(path string) ([]diffview.EvalCase, error) {
 
 	var cases []diffview.EvalCase
 	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, maxLineSize), maxLineSize)
 	lineNum := 0
 
 	for scanner.Scan() {

@@ -3,6 +3,7 @@ package jsonl_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/fwojciec/diffview/jsonl"
@@ -89,5 +90,24 @@ not valid json
 
 		require.NoError(t, err)
 		assert.Len(t, cases, 2)
+	})
+
+	t.Run("handles large lines exceeding default buffer", func(t *testing.T) {
+		t.Parallel()
+
+		// Create a line larger than default scanner buffer (64KB)
+		// Generate a message with 100KB of padding
+		largeMessage := strings.Repeat("x", 100*1024)
+		dir := t.TempDir()
+		path := filepath.Join(dir, "large.jsonl")
+		content := `{"input":{"commit":{"hash":"abc123","message":"` + largeMessage + `"}},"story":{"change_type":"refactor","summary":"x"}}`
+		require.NoError(t, os.WriteFile(path, []byte(content), 0o644))
+
+		loader := jsonl.NewLoader()
+		cases, err := loader.Load(path)
+
+		require.NoError(t, err)
+		require.Len(t, cases, 1)
+		assert.Equal(t, "abc123", cases[0].Input.Commit.Hash)
 	})
 }
