@@ -96,9 +96,26 @@ type WordDiffer interface {
 // GitRunner provides access to git operations for extracting commit history.
 type GitRunner interface {
 	// Log returns commit hashes from the repository at repoPath, limited to n commits.
+	// Deprecated: Use MergeCommits for PR-level extraction.
 	Log(ctx context.Context, repoPath string, limit int) ([]string, error)
 	// Show returns the diff for a specific commit hash.
+	// Deprecated: Use DiffRange for PR-level extraction.
 	Show(ctx context.Context, repoPath string, hash string) (string, error)
 	// Message returns the commit message for a specific commit hash.
+	// Deprecated: Use CommitsInRange for PR-level extraction.
 	Message(ctx context.Context, repoPath string, hash string) (string, error)
+
+	// MergeCommits returns merge commit hashes from the repository, limited to n commits.
+	// Used to find PR boundaries in git history.
+	MergeCommits(ctx context.Context, repoPath string, limit int) ([]string, error)
+	// CommitsInRange returns commits between base and head (base exclusive, head inclusive).
+	// For a merge commit, use merge^1..merge^2 to get all PR commits.
+	CommitsInRange(ctx context.Context, repoPath, base, head string) ([]CommitBrief, error)
+	// DiffRange returns the combined diff between base and head.
+	// Uses three-dot notation (base...head) to show changes introduced by head since common ancestor.
+	DiffRange(ctx context.Context, repoPath, base, head string) (string, error)
+	// CurrentBranch returns the name of the currently checked out branch.
+	CurrentBranch(ctx context.Context, repoPath string) (string, error)
+	// MergeBase returns the best common ancestor commit between two refs.
+	MergeBase(ctx context.Context, repoPath, ref1, ref2 string) (string, error)
 }
