@@ -43,11 +43,23 @@ func generateLargeDiff(linesPerFile, lineLength int) *diffview.Diff {
 			lineType = diffview.LineContext
 		}
 
+		// Set line numbers according to diff semantics:
+		// Added lines have no old line number (0)
+		// Deleted lines have no new line number (0)
+		oldLineNum := j + 1
+		newLineNum := j + 1
+		switch lineType {
+		case diffview.LineAdded:
+			oldLineNum = 0
+		case diffview.LineDeleted:
+			newLineNum = 0
+		}
+
 		lines[j] = diffview.Line{
 			Type:       lineType,
 			Content:    content,
-			OldLineNum: j + 1,
-			NewLineNum: j + 1,
+			OldLineNum: oldLineNum,
+			NewLineNum: newLineNum,
 		}
 	}
 
@@ -165,6 +177,9 @@ func TestLargeDiff_PerformanceBounds(t *testing.T) {
 	assert.Less(t, memUsed, uint64(200*1024*1024), "Memory usage exceeded 200MB")
 }
 
+// benchResult prevents compiler from optimizing away benchmark results.
+var benchResult any
+
 func BenchmarkLargeDiff_Parse(b *testing.B) {
 	var sb strings.Builder
 	sb.WriteString("diff --git a/large.jsonl b/large.jsonl\n")
@@ -182,13 +197,16 @@ func BenchmarkLargeDiff_Parse(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 
+	var result *diffview.Diff
 	for i := 0; i < b.N; i++ {
 		parser := gitdiff.NewParser()
-		_, err := parser.Parse(strings.NewReader(diffStr))
+		diff, err := parser.Parse(strings.NewReader(diffStr))
 		if err != nil {
 			b.Fatal(err)
 		}
+		result = diff
 	}
+	benchResult = result
 }
 
 func BenchmarkLargeDiff_ModelCreate(b *testing.B) {
@@ -197,21 +215,27 @@ func BenchmarkLargeDiff_ModelCreate(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 
+	var result bubbletea.Model
 	for i := 0; i < b.N; i++ {
-		_ = bubbletea.NewModel(diff, bubbletea.WithTheme(lipgloss.DefaultTheme()))
+		result = bubbletea.NewModel(diff, bubbletea.WithTheme(lipgloss.DefaultTheme()))
 	}
+	benchResult = result
 }
 
 func BenchmarkLargeDiff_Render(b *testing.B) {
 	diff := generateLargeDiff(100, 76000)
-	model := bubbletea.NewModel(diff, bubbletea.WithTheme(lipgloss.DefaultTheme()))
 	msg := tea.WindowSizeMsg{Width: 120, Height: 40}
 
 	b.ResetTimer()
 	b.ReportAllocs()
 
+	// Create fresh model each iteration to benchmark cold render path.
+	// Model.Update returns new model (value semantics), so state is not mutated.
+	var result string
 	for i := 0; i < b.N; i++ {
+		model := bubbletea.NewModel(diff, bubbletea.WithTheme(lipgloss.DefaultTheme()))
 		updatedModel, _ := model.Update(msg)
-		_ = updatedModel.(bubbletea.Model).View()
+		result = updatedModel.(bubbletea.Model).View()
 	}
+	benchResult = result
 }
