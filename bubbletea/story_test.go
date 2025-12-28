@@ -494,3 +494,94 @@ func TestStoryModel_SectionIndicator(t *testing.T) {
 	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
 	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
 }
+
+func TestStoryModel_SectionFiltering(t *testing.T) {
+	t.Parallel()
+
+	// Create diff with two files, each belonging to a different section
+	diff := &diffview.Diff{
+		Files: []diffview.FileDiff{
+			{
+				NewPath:   "b/first.go",
+				Operation: diffview.FileModified,
+				Hunks: []diffview.Hunk{
+					{
+						OldStart: 1, OldCount: 1, NewStart: 1, NewCount: 1,
+						Lines: []diffview.Line{
+							{Type: diffview.LineContext, Content: "SECTION_ONE_CONTENT"},
+						},
+					},
+				},
+			},
+			{
+				NewPath:   "b/second.go",
+				Operation: diffview.FileModified,
+				Hunks: []diffview.Hunk{
+					{
+						OldStart: 1, OldCount: 1, NewStart: 1, NewCount: 1,
+						Lines: []diffview.Line{
+							{Type: diffview.LineContext, Content: "SECTION_TWO_CONTENT"},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	story := &diffview.StoryClassification{
+		Sections: []diffview.Section{
+			{
+				Role:  "first",
+				Title: "First Section",
+				Hunks: []diffview.HunkRef{
+					{File: "first.go", HunkIndex: 0, Category: "core"},
+				},
+			},
+			{
+				Role:  "second",
+				Title: "Second Section",
+				Hunks: []diffview.HunkRef{
+					{File: "second.go", HunkIndex: 0, Category: "core"},
+				},
+			},
+		},
+	}
+
+	m := bubbletea.NewStoryModel(diff, story)
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(80, 24),
+	)
+
+	// Wait for initial render - should show only section 1 content
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		hasSection1Content := bytes.Contains(out, []byte("SECTION_ONE_CONTENT"))
+		noSection2Content := !bytes.Contains(out, []byte("SECTION_TWO_CONTENT"))
+		hasSection1Indicator := bytes.Contains(out, []byte("section 1/2"))
+		return hasSection1Content && noSection2Content && hasSection1Indicator
+	})
+
+	// Navigate to section 2
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+
+	// Should show only section 2 content
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		hasSection2Content := bytes.Contains(out, []byte("SECTION_TWO_CONTENT"))
+		noSection1Content := !bytes.Contains(out, []byte("SECTION_ONE_CONTENT"))
+		hasSection2Indicator := bytes.Contains(out, []byte("section 2/2"))
+		return hasSection2Content && noSection1Content && hasSection2Indicator
+	})
+
+	// Navigate back to section 1
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'S'}})
+
+	// Should show only section 1 content again
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		hasSection1Content := bytes.Contains(out, []byte("SECTION_ONE_CONTENT"))
+		noSection2Content := !bytes.Contains(out, []byte("SECTION_TWO_CONTENT"))
+		hasSection1Indicator := bytes.Contains(out, []byte("section 1/2"))
+		return hasSection1Content && noSection2Content && hasSection1Indicator
+	})
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}
