@@ -41,6 +41,7 @@ Thumbs.db
 # Build artifacts
 /diffview
 /diffstory
+/evalreview
 /dist/
 /build/
 cmd/diffview/diffview
