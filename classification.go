@@ -78,19 +78,20 @@ func (sc *StoryClassification) OrderSections() {
 }
 
 // narrativeOrder returns the role ordering for a given narrative type.
+// All narratives end with supporting -> cleanup as a consistent suffix.
 // Roles not in the returned slice are placed at the end in original order.
 func narrativeOrder(narrative string) []string {
 	switch narrative {
 	case "cause-effect":
-		return []string{"problem", "fix", "test", "supporting"}
+		return []string{"problem", "fix", "test", "supporting", "cleanup"}
 	case "core-periphery":
 		return []string{"core", "supporting", "cleanup"}
 	case "before-after":
-		return []string{"cleanup", "core", "test"}
+		return []string{"cleanup", "core", "test", "supporting"}
 	case "rule-instances":
-		return []string{"rule", "exception", "core"}
+		return []string{"rule", "exception", "core", "supporting", "cleanup"}
 	case "entry-implementation":
-		return []string{"integration", "core", "test", "supporting"}
+		return []string{"integration", "core", "test", "supporting", "cleanup"}
 	default:
 		return nil
 	}
