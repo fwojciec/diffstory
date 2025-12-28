@@ -123,6 +123,9 @@ func (c *Classifier) Classify(ctx context.Context, input diffview.Classification
 		return nil, fmt.Errorf("gemini: failed to parse response: %w", err)
 	}
 
+	// Deterministically reorder sections based on narrative type
+	classification.OrderSections()
+
 	return &classification, nil
 }
 
