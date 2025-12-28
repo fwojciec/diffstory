@@ -12,12 +12,15 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	charmlipgloss "github.com/charmbracelet/lipgloss"
 	"github.com/fwojciec/diffview"
 	"github.com/fwojciec/diffview/bubbletea"
+	"github.com/fwojciec/diffview/chroma"
 	"github.com/fwojciec/diffview/fs"
 	"github.com/fwojciec/diffview/gemini"
 	"github.com/fwojciec/diffview/gitdiff"
+	"github.com/fwojciec/diffview/lipgloss"
+	"github.com/fwojciec/diffview/worddiff"
 )
 
 // ErrNoChanges is returned when the diff contains no changes to analyze.
@@ -109,7 +112,7 @@ func (s *spinner) Start() {
 			select {
 			case <-s.stop:
 				// Clear the spinner line using display width for Unicode correctness
-				clearLen := lipgloss.Width(s.frames[0]) + 1 + lipgloss.Width(s.message)
+				clearLen := charmlipgloss.Width(s.frames[0]) + 1 + charmlipgloss.Width(s.message)
 				fmt.Fprintf(s.w, "\r%s\r", strings.Repeat(" ", clearLen))
 				return
 			case <-ticker.C:
@@ -199,8 +202,21 @@ func run() error {
 		return err
 	}
 
+	// Set up syntax highlighting
+	theme := lipgloss.DefaultTheme()
+	detector := chroma.NewDetector()
+	tokenizer, err := chroma.NewTokenizer(chroma.StyleFromPalette(theme.Palette()))
+	if err != nil {
+		return fmt.Errorf("failed to set up syntax highlighting: %w", err)
+	}
+
 	// Launch StoryModel TUI
-	m := bubbletea.NewStoryModel(diff, classification)
+	m := bubbletea.NewStoryModel(diff, classification,
+		bubbletea.WithStoryTheme(theme),
+		bubbletea.WithStoryLanguageDetector(detector),
+		bubbletea.WithStoryTokenizer(tokenizer),
+		bubbletea.WithStoryWordDiffer(worddiff.NewDiffer()),
+	)
 	p := tea.NewProgram(m,
 		tea.WithAltScreen(),
 		tea.WithMouseCellMotion(),
