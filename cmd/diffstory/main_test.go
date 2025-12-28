@@ -1,7 +1,6 @@
 package main_test
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"os"
@@ -16,7 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestApp_Run_OutputsValidJSON(t *testing.T) {
+func TestApp_Run_ReturnsDiffAndClassification(t *testing.T) {
 	t.Parallel()
 
 	diffInput := `diff --git a/hello.go b/hello.go
@@ -30,32 +29,45 @@ index 0000000..e69de29
 +func hello() {}
 `
 
-	var stdout bytes.Buffer
-	app := &main.App{
-		Input:  strings.NewReader(diffInput),
-		Output: &stdout,
-		Generator: &mock.StoryGenerator{
-			GenerateFn: func(_ context.Context, _ []diffview.AnnotatedHunk) (*diffview.DiffAnalysis, error) {
-				return &diffview.DiffAnalysis{
-					Version: 1,
-					Analyses: []diffview.Analysis{
-						{
-							Type:    "story",
-							Payload: []byte(`{"changeType":"feature","summary":"Add hello function","parts":[]}`),
-						},
-					},
-				}, nil
+	expectedClassification := &diffview.StoryClassification{
+		ChangeType: "feature",
+		Narrative:  "core-periphery",
+		Summary:    "Add hello function",
+		Sections: []diffview.Section{
+			{
+				Role:  "core",
+				Title: "Add function",
+				Hunks: []diffview.HunkRef{
+					{File: "hello.go", HunkIndex: 0, Category: "core"},
+				},
 			},
 		},
 	}
 
-	err := app.Run(context.Background())
+	app := &main.App{
+		Input: strings.NewReader(diffInput),
+		Classifier: &mock.StoryClassifier{
+			ClassifyFn: func(_ context.Context, input diffview.ClassificationInput) (*diffview.StoryClassification, error) {
+				// Verify the input has the parsed diff
+				require.Len(t, input.Diff.Files, 1)
+				require.Equal(t, "hello.go", input.Diff.Files[0].NewPath)
+				return expectedClassification, nil
+			},
+		},
+	}
+
+	diff, classification, err := app.Run(context.Background())
 	require.NoError(t, err)
 
-	// Output should be valid JSON containing the analysis
-	output := stdout.String()
-	assert.Contains(t, output, `"Version"`)
-	assert.Contains(t, output, `"Analyses"`)
+	// Verify diff was parsed correctly
+	require.NotNil(t, diff)
+	require.Len(t, diff.Files, 1)
+	assert.Equal(t, "hello.go", diff.Files[0].NewPath)
+
+	// Verify classification was returned
+	require.NotNil(t, classification)
+	assert.Equal(t, "feature", classification.ChangeType)
+	assert.Equal(t, "Add hello function", classification.Summary)
 }
 
 func TestApp_Run_ReadsFromFilePath(t *testing.T) {
@@ -77,25 +89,23 @@ index 0000000..e69de29
 	err := os.WriteFile(diffPath, []byte(diffContent), 0o644)
 	require.NoError(t, err)
 
-	var stdout bytes.Buffer
 	app := &main.App{
 		FilePath: diffPath,
-		Output:   &stdout,
-		Generator: &mock.StoryGenerator{
-			GenerateFn: func(_ context.Context, _ []diffview.AnnotatedHunk) (*diffview.DiffAnalysis, error) {
-				return &diffview.DiffAnalysis{Version: 1}, nil
+		Classifier: &mock.StoryClassifier{
+			ClassifyFn: func(_ context.Context, _ diffview.ClassificationInput) (*diffview.StoryClassification, error) {
+				return &diffview.StoryClassification{ChangeType: "feature"}, nil
 			},
 		},
 	}
 
-	err = app.Run(context.Background())
+	diff, classification, err := app.Run(context.Background())
 	require.NoError(t, err)
-
-	output := stdout.String()
-	assert.Contains(t, output, `"Version"`)
+	require.NotNil(t, diff)
+	require.NotNil(t, classification)
+	assert.Len(t, diff.Files, 1)
 }
 
-func TestApp_Run_IncludesFilePathInHunkID(t *testing.T) {
+func TestApp_Run_PassesDiffToClassifier(t *testing.T) {
 	t.Parallel()
 
 	diffInput := `diff --git a/src/auth.go b/src/auth.go
@@ -109,28 +119,27 @@ index 0000000..e69de29
  func logout() {}
 `
 
-	var capturedHunks []diffview.AnnotatedHunk
-	var stdout bytes.Buffer
+	var capturedInput diffview.ClassificationInput
 	app := &main.App{
-		Input:  strings.NewReader(diffInput),
-		Output: &stdout,
-		Generator: &mock.StoryGenerator{
-			GenerateFn: func(_ context.Context, hunks []diffview.AnnotatedHunk) (*diffview.DiffAnalysis, error) {
-				capturedHunks = hunks
-				return &diffview.DiffAnalysis{Version: 1}, nil
+		Input: strings.NewReader(diffInput),
+		Classifier: &mock.StoryClassifier{
+			ClassifyFn: func(_ context.Context, input diffview.ClassificationInput) (*diffview.StoryClassification, error) {
+				capturedInput = input
+				return &diffview.StoryClassification{ChangeType: "feature"}, nil
 			},
 		},
 	}
 
-	err := app.Run(context.Background())
+	_, _, err := app.Run(context.Background())
 	require.NoError(t, err)
 
-	require.Len(t, capturedHunks, 1)
-	// The hunk ID should contain the file path for context
-	assert.Contains(t, capturedHunks[0].ID, "src/auth.go")
+	// Verify the diff was passed to the classifier
+	require.Len(t, capturedInput.Diff.Files, 1)
+	assert.Equal(t, "src/auth.go", capturedInput.Diff.Files[0].NewPath)
+	require.Len(t, capturedInput.Diff.Files[0].Hunks, 1)
 }
 
-func TestApp_Run_GeneratorError(t *testing.T) {
+func TestApp_Run_ClassifierError(t *testing.T) {
 	t.Parallel()
 
 	diffInput := `diff --git a/hello.go b/hello.go
@@ -141,18 +150,16 @@ new file mode 100644
 +package main
 `
 
-	var stdout bytes.Buffer
 	app := &main.App{
-		Input:  strings.NewReader(diffInput),
-		Output: &stdout,
-		Generator: &mock.StoryGenerator{
-			GenerateFn: func(_ context.Context, _ []diffview.AnnotatedHunk) (*diffview.DiffAnalysis, error) {
+		Input: strings.NewReader(diffInput),
+		Classifier: &mock.StoryClassifier{
+			ClassifyFn: func(_ context.Context, _ diffview.ClassificationInput) (*diffview.StoryClassification, error) {
 				return nil, errors.New("API error")
 			},
 		},
 	}
 
-	err := app.Run(context.Background())
+	_, _, err := app.Run(context.Background())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "API error")
 }
@@ -160,18 +167,16 @@ new file mode 100644
 func TestApp_Run_FileNotFound(t *testing.T) {
 	t.Parallel()
 
-	var stdout bytes.Buffer
 	app := &main.App{
 		FilePath: "/nonexistent/path/to/diff.patch",
-		Output:   &stdout,
-		Generator: &mock.StoryGenerator{
-			GenerateFn: func(_ context.Context, _ []diffview.AnnotatedHunk) (*diffview.DiffAnalysis, error) {
-				return &diffview.DiffAnalysis{Version: 1}, nil
+		Classifier: &mock.StoryClassifier{
+			ClassifyFn: func(_ context.Context, _ diffview.ClassificationInput) (*diffview.StoryClassification, error) {
+				return &diffview.StoryClassification{ChangeType: "feature"}, nil
 			},
 		},
 	}
 
-	err := app.Run(context.Background())
+	_, _, err := app.Run(context.Background())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no such file")
 }
@@ -182,19 +187,17 @@ func TestApp_Run_EmptyDiff(t *testing.T) {
 	// Empty input - no diff content at all
 	diffInput := ""
 
-	var stdout bytes.Buffer
 	app := &main.App{
-		Input:  strings.NewReader(diffInput),
-		Output: &stdout,
-		Generator: &mock.StoryGenerator{
-			GenerateFn: func(_ context.Context, _ []diffview.AnnotatedHunk) (*diffview.DiffAnalysis, error) {
-				t.Error("Generator should not be called for empty diff")
-				return &diffview.DiffAnalysis{Version: 1}, nil
+		Input: strings.NewReader(diffInput),
+		Classifier: &mock.StoryClassifier{
+			ClassifyFn: func(_ context.Context, _ diffview.ClassificationInput) (*diffview.StoryClassification, error) {
+				t.Error("Classifier should not be called for empty diff")
+				return &diffview.StoryClassification{ChangeType: "feature"}, nil
 			},
 		},
 	}
 
-	err := app.Run(context.Background())
+	_, _, err := app.Run(context.Background())
 	require.Error(t, err)
 	assert.Equal(t, main.ErrNoChanges, err)
 }
