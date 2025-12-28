@@ -103,6 +103,13 @@ For the overall change, determine:
 
 Group hunks into sections with meaningful roles that tell the story of the change.
 
+**Order sections to tell a coherent story.** The array order determines the reading order:
+- cause-effect: problem → fix → test → supporting
+- core-periphery: core → supporting → noise
+- before-after: old pattern removal → new pattern → tests
+- rule-instances: rule definition → instances
+- entry-implementation: API/entry → implementation → tests
+
 Respond with JSON matching this schema:
 {
   "change_type": "bugfix|feature|refactor|chore|docs",
