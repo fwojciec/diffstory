@@ -50,7 +50,13 @@ func main() {
 
 func run() error {
 	if len(os.Args) < 2 {
-		return fmt.Errorf("usage: evalreview <command|cases.jsonl>\n\nCommands:\n  collect   Extract diffs from git history\n  classify  Classify eval cases from JSONL\n\nWith a .jsonl file: opens the review UI")
+		return fmt.Errorf(`usage: evalreview <command|cases.jsonl>
+
+Commands:
+  collect   Extract diffs from git history
+  classify  Classify eval cases from JSONL
+
+With a .jsonl file: opens the review UI`)
 	}
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
