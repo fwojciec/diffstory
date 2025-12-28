@@ -24,6 +24,11 @@ type StoryModel struct {
 	collapseText     map[hunkKey]string // hunk → collapse text
 	collapsedHunks   map[hunkKey]bool   // tracks runtime collapse state
 
+	// Syntax highlighting
+	languageDetector diffview.LanguageDetector
+	tokenizer        diffview.Tokenizer
+	wordDiffer       diffview.WordDiffer
+
 	// UI state
 	viewport   viewport.Model
 	keymap     StoryKeyMap
@@ -39,8 +44,11 @@ type StoryModel struct {
 type StoryModelOption func(*storyModelConfig)
 
 type storyModelConfig struct {
-	renderer *lipgloss.Renderer
-	theme    diffview.Theme
+	renderer         *lipgloss.Renderer
+	theme            diffview.Theme
+	languageDetector diffview.LanguageDetector
+	tokenizer        diffview.Tokenizer
+	wordDiffer       diffview.WordDiffer
 }
 
 // WithStoryRenderer sets a custom lipgloss renderer for the model.
@@ -54,6 +62,27 @@ func WithStoryRenderer(r *lipgloss.Renderer) StoryModelOption {
 func WithStoryTheme(t diffview.Theme) StoryModelOption {
 	return func(cfg *storyModelConfig) {
 		cfg.theme = t
+	}
+}
+
+// WithStoryLanguageDetector sets the language detector for syntax highlighting.
+func WithStoryLanguageDetector(d diffview.LanguageDetector) StoryModelOption {
+	return func(cfg *storyModelConfig) {
+		cfg.languageDetector = d
+	}
+}
+
+// WithStoryTokenizer sets the tokenizer for syntax highlighting.
+func WithStoryTokenizer(t diffview.Tokenizer) StoryModelOption {
+	return func(cfg *storyModelConfig) {
+		cfg.tokenizer = t
+	}
+}
+
+// WithStoryWordDiffer sets the word differ for word-level highlighting.
+func WithStoryWordDiffer(d diffview.WordDiffer) StoryModelOption {
+	return func(cfg *storyModelConfig) {
+		cfg.wordDiffer = d
 	}
 }
 
@@ -98,16 +127,19 @@ func NewStoryModel(diff *diffview.Diff, story *diffview.StoryClassification, opt
 	}
 
 	return StoryModel{
-		diff:           diff,
-		story:          story,
-		hunkToSection:  hunkToSection,
-		hunkCategories: hunkCategories,
-		collapseText:   collapseText,
-		collapsedHunks: collapsedHunks,
-		keymap:         DefaultStoryKeyMap(),
-		styles:         styles,
-		palette:        palette,
-		renderer:       cfg.renderer,
+		diff:             diff,
+		story:            story,
+		hunkToSection:    hunkToSection,
+		hunkCategories:   hunkCategories,
+		collapseText:     collapseText,
+		collapsedHunks:   collapsedHunks,
+		languageDetector: cfg.languageDetector,
+		tokenizer:        cfg.tokenizer,
+		wordDiffer:       cfg.wordDiffer,
+		keymap:           DefaultStoryKeyMap(),
+		styles:           styles,
+		palette:          palette,
+		renderer:         cfg.renderer,
 	}
 }
 
@@ -203,13 +235,16 @@ func (m StoryModel) View() string {
 // renderContent renders the diff content with story-aware configuration.
 func (m StoryModel) renderContent() string {
 	return renderDiff(renderConfig{
-		diff:           m.diff,
-		styles:         m.styles,
-		renderer:       m.renderer,
-		width:          m.width,
-		collapsedHunks: m.collapsedHunks,
-		hunkCategories: m.hunkCategories,
-		collapseText:   m.collapseText,
+		diff:             m.diff,
+		styles:           m.styles,
+		renderer:         m.renderer,
+		width:            m.width,
+		languageDetector: m.languageDetector,
+		tokenizer:        m.tokenizer,
+		wordDiffer:       m.wordDiffer,
+		collapsedHunks:   m.collapsedHunks,
+		hunkCategories:   m.hunkCategories,
+		collapseText:     m.collapseText,
 	})
 }
 
