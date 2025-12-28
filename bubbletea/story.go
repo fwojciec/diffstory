@@ -557,8 +557,8 @@ func (m StoryModel) currentSection() (current, total int, title string) {
 		nextSectionPos := m.sectionPositions[positionIdx+1]
 		viewportBottom := currentLine + m.viewport.Height
 		if nextSectionPos < viewportBottom {
-			current = positionIdx + 2
-			positionIdx = positionIdx + 1
+			positionIdx++
+			current = positionIdx + 1
 		}
 	}
 
