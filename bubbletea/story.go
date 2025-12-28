@@ -293,10 +293,13 @@ func (m StoryModel) computePositions() (hunkPositions []int, hunkRefs []diffview
 		return nil, nil, nil
 	}
 
-	// Build a set of hunks in active section for looking up original indices
-	var sectionHunks []diffview.HunkRef
+	// Build map from hunkKey to HunkRef for O(1) lookup
+	// This handles the case where section's HunkRefs may not be in file order
+	refMap := make(map[hunkKey]diffview.HunkRef)
 	if m.story != nil && m.activeSection >= 0 && m.activeSection < len(m.story.Sections) {
-		sectionHunks = m.story.Sections[m.activeSection].Hunks
+		for _, ref := range m.story.Sections[m.activeSection].Hunks {
+			refMap[hunkKey{file: ref.File, hunkIndex: ref.HunkIndex}] = ref
+		}
 	}
 
 	lineNum := 0
@@ -312,24 +315,35 @@ func (m StoryModel) computePositions() (hunkPositions []int, hunkRefs []diffview
 		if len(file.Hunks) == 0 {
 			lineNum++ // "(empty)" line
 		} else {
-			for filteredIdx, hunk := range file.Hunks {
+			// Track which original hunk index we're at for this file
+			// filteredDiff() preserves order, so we scan through original indices
+			origIdx := 0
+			for _, hunk := range file.Hunks {
 				hunkPositions = append(hunkPositions, lineNum)
 
-				// Find the matching HunkRef to get original index
-				var matchedRef diffview.HunkRef
-				hunkCounter := 0
-				for _, ref := range sectionHunks {
-					if ref.File == path {
-						if hunkCounter == filteredIdx {
-							matchedRef = ref
+				// When no sections exist, refMap is empty - create synthetic ref
+				if len(refMap) == 0 {
+					hunkRefs = append(hunkRefs, diffview.HunkRef{
+						File:      path,
+						HunkIndex: origIdx,
+					})
+					origIdx++
+				} else {
+					// Find original index by scanning until we hit one in the section
+					for {
+						key := hunkKey{file: path, hunkIndex: origIdx}
+						if ref, ok := refMap[key]; ok {
+							hunkRefs = append(hunkRefs, ref)
+							origIdx++
 							break
 						}
-						hunkCounter++
+						origIdx++
 					}
 				}
-				hunkRefs = append(hunkRefs, matchedRef)
 
-				key := hunkKey{file: matchedRef.File, hunkIndex: matchedRef.HunkIndex}
+				// Use the just-appended ref for collapse check
+				lastRef := hunkRefs[len(hunkRefs)-1]
+				key := hunkKey{file: lastRef.File, hunkIndex: lastRef.HunkIndex}
 				if m.collapsedHunks[key] {
 					lineNum++ // collapsed: single line
 				} else {
