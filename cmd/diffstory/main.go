@@ -18,6 +18,7 @@ import (
 	"github.com/fwojciec/diffview/chroma"
 	"github.com/fwojciec/diffview/fs"
 	"github.com/fwojciec/diffview/gemini"
+	"github.com/fwojciec/diffview/git"
 	"github.com/fwojciec/diffview/gitdiff"
 	"github.com/fwojciec/diffview/lipgloss"
 	"github.com/fwojciec/diffview/worddiff"
@@ -26,10 +27,16 @@ import (
 // ErrNoChanges is returned when the diff contains no changes to analyze.
 var ErrNoChanges = errors.New("no changes to analyze")
 
+// ErrOnBaseBranch is returned when running in branch mode while on the base branch.
+var ErrOnBaseBranch = errors.New("already on base branch, no changes to show")
+
 // App encapsulates the application logic for testing.
 type App struct {
 	Input      io.Reader                // Read diff from stdin (if FilePath is empty)
 	FilePath   string                   // Read diff from file (takes precedence over Input)
+	GitRunner  diffview.GitRunner       // Git runner for branch mode
+	RepoPath   string                   // Repository path for branch mode
+	BaseBranch string                   // Base branch to compare against (e.g., "main")
 	Classifier diffview.StoryClassifier // Classifier for story generation
 }
 
@@ -44,6 +51,13 @@ func (a *App) Run(ctx context.Context) (*diffview.Diff, *diffview.StoryClassific
 		}
 		defer f.Close()
 		input = f
+	} else if a.GitRunner != nil {
+		// Branch mode: get diff from git
+		diffStr, err := a.GitRunner.DiffRange(ctx, a.RepoPath, a.BaseBranch, "HEAD")
+		if err != nil {
+			return nil, nil, err
+		}
+		input = strings.NewReader(diffStr)
 	} else {
 		input = a.Input
 	}
@@ -178,10 +192,31 @@ func run() error {
 		if err != nil {
 			return fmt.Errorf("error checking stdin: %w", err)
 		}
-		if (stat.Mode() & os.ModeCharDevice) != 0 {
-			return ErrNoInput
+		if (stat.Mode() & os.ModeCharDevice) == 0 {
+			// Stdin is a pipe, use pipe mode
+			app.Input = os.Stdin
+		} else {
+			// No pipe, use branch mode
+			gitRunner := git.NewRunner()
+			cwd, err := os.Getwd()
+			if err != nil {
+				return fmt.Errorf("failed to get current directory: %w", err)
+			}
+
+			// Check if we're on the base branch
+			currentBranch, err := gitRunner.CurrentBranch(ctx, cwd)
+			if err != nil {
+				return fmt.Errorf("failed to get current branch: %w", err)
+			}
+			baseBranch := "main"
+			if currentBranch == baseBranch {
+				return ErrOnBaseBranch
+			}
+
+			app.GitRunner = gitRunner
+			app.RepoPath = cwd
+			app.BaseBranch = baseBranch
 		}
-		app.Input = os.Stdin
 	}
 
 	// Show spinner while processing (only if stderr is a terminal)
