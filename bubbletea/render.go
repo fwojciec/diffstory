@@ -110,19 +110,24 @@ func renderDiff(cfg renderConfig) string {
 		for hunkIdx, hunk := range file.Hunks {
 			key := hunkKey{file: path, hunkIndex: hunkIdx}
 
-			// Check if this hunk is collapsed
-			if cfg.collapsedHunks != nil && cfg.collapsedHunks[key] {
-				// Render collapsed hunk as a single line
-				sb.WriteString(renderCollapsedHunk(hunk, key, cfg, hunkHeaderStyle))
-				sb.WriteString("\n")
-				continue
-			}
-
 			// Determine if this hunk should be dimmed based on category
+			// (must happen before collapsed check so collapsed hunks can be dimmed too)
 			isDimmed := false
 			if cfg.hunkCategories != nil {
 				category := cfg.hunkCategories[key]
 				isDimmed = category == "refactoring" || category == "systematic" || category == "noise"
+			}
+
+			// Check if this hunk is collapsed
+			if cfg.collapsedHunks != nil && cfg.collapsedHunks[key] {
+				// Render collapsed hunk as a single line, with dimming if applicable
+				collapseStyle := hunkHeaderStyle
+				if isDimmed {
+					collapseStyle = dimmedStyle
+				}
+				sb.WriteString(renderCollapsedHunk(hunk, key, cfg, collapseStyle))
+				sb.WriteString("\n")
+				continue
 			}
 
 			// Select styles based on dimming
@@ -203,8 +208,9 @@ func renderDiff(cfg renderConfig) string {
 						tokens = cfg.tokenizer.Tokenize(language, lineContent)
 					}
 
-					if tokens != nil {
+					if tokens != nil && !isDimmed {
 						// Render with syntax highlighting (prefix + tokens)
+						// Skip syntax highlighting for dimmed hunks so they appear uniformly muted
 						var colors diffview.ColorPair
 						switch line.Type {
 						case diffview.LineAdded:
