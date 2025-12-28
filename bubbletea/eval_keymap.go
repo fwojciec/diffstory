@@ -82,7 +82,7 @@ func DefaultEvalKeyMap() EvalKeyMap {
 		),
 		GotoTop: key.NewBinding(
 			key.WithKeys("g"),
-			key.WithHelp("gg", "go to top"),
+			key.WithHelp("g", "go to top"),
 		),
 		GotoBottom: key.NewBinding(
 			key.WithKeys("G"),

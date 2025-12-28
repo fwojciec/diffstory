@@ -217,17 +217,17 @@ func (m EvalModel) handleReviewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case key.Matches(msg, m.keymap.ScrollDown):
 		if m.activePanel == PanelDiff {
-			m.diffViewport, _ = m.diffViewport.Update(tea.KeyMsg{Type: tea.KeyDown})
+			m.diffViewport.ScrollDown(1)
 		} else {
-			m.storyViewport, _ = m.storyViewport.Update(tea.KeyMsg{Type: tea.KeyDown})
+			m.storyViewport.ScrollDown(1)
 		}
 		return m, nil
 
 	case key.Matches(msg, m.keymap.ScrollUp):
 		if m.activePanel == PanelDiff {
-			m.diffViewport, _ = m.diffViewport.Update(tea.KeyMsg{Type: tea.KeyUp})
+			m.diffViewport.ScrollUp(1)
 		} else {
-			m.storyViewport, _ = m.storyViewport.Update(tea.KeyMsg{Type: tea.KeyUp})
+			m.storyViewport.ScrollUp(1)
 		}
 		return m, nil
 
@@ -298,14 +298,8 @@ func (m EvalModel) handleCritiqueKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m EvalModel) handleHelpKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch {
-	case key.Matches(msg, m.keymap.Help), key.Matches(msg, m.keymap.Quit):
-		// Any key dismisses help
-		m.mode = ModeReview
-		return m, nil
-	}
-	// Dismiss on any other key too
+func (m EvalModel) handleHelpKeys(_ tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Any key dismisses help
 	m.mode = ModeReview
 	return m, nil
 }
