@@ -17,12 +17,13 @@ type StoryModel struct {
 	story *diffview.StoryClassification
 
 	// Pre-computed mappings (built on construction)
-	hunkToSection    map[hunkKey]int    // hunk → section index
-	sectionPositions []int              // line numbers where sections start
-	sectionIndices   []int              // maps position index to story section index
-	hunkCategories   map[hunkKey]string // hunk → category for styling
-	collapseText     map[hunkKey]string // hunk → collapse text
-	collapsedHunks   map[hunkKey]bool   // tracks runtime collapse state
+	hunkToSection  map[hunkKey]int    // hunk → section index
+	hunkCategories map[hunkKey]string // hunk → category for styling
+	collapseText   map[hunkKey]string // hunk → collapse text
+	collapsedHunks map[hunkKey]bool   // tracks runtime collapse state
+
+	// Section filtering
+	activeSection int // 0-based index of current section being viewed
 
 	// Syntax highlighting
 	languageDetector diffview.LanguageDetector
@@ -207,13 +208,11 @@ func (m StoryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !m.ready {
 			m.viewport = viewport.New(msg.Width, msg.Height-statusBarHeight)
 			m.viewport.SetContent(m.renderContent())
-			m.sectionPositions, m.sectionIndices = m.computeSectionPositions()
 			m.ready = true
 		} else if widthChanged {
 			m.viewport.Width = msg.Width
 			m.viewport.Height = msg.Height - statusBarHeight
 			m.viewport.SetContent(m.renderContent())
-			m.sectionPositions, m.sectionIndices = m.computeSectionPositions()
 		} else {
 			m.viewport.Height = msg.Height - statusBarHeight
 		}
@@ -235,7 +234,7 @@ func (m StoryModel) View() string {
 // renderContent renders the diff content with story-aware configuration.
 func (m StoryModel) renderContent() string {
 	return renderDiff(renderConfig{
-		diff:             m.diff,
+		diff:             m.filteredDiff(),
 		styles:           m.styles,
 		renderer:         m.renderer,
 		width:            m.width,
@@ -248,61 +247,60 @@ func (m StoryModel) renderContent() string {
 	})
 }
 
-// computeSectionPositions calculates the line positions where each section starts.
-// A section starts at the first hunk that belongs to it.
-// Returns both positions and the mapping from position index to story section index.
-func (m StoryModel) computeSectionPositions() (positions []int, indices []int) {
-	if m.story == nil || len(m.story.Sections) == 0 {
-		return nil, nil
+// filteredDiff returns a diff containing only hunks from the active section.
+// If there are no sections or the active section is invalid, returns the full diff.
+func (m StoryModel) filteredDiff() *diffview.Diff {
+	if m.diff == nil || m.story == nil || len(m.story.Sections) == 0 {
+		return m.diff
 	}
-	if m.diff == nil {
-		return nil, nil
+	if m.activeSection < 0 || m.activeSection >= len(m.story.Sections) {
+		return m.diff
 	}
 
-	// Compute hunk positions first
-	hunkPositions, _ := m.computePositions()
+	// Build a set of hunks in the active section
+	section := m.story.Sections[m.activeSection]
+	activeHunks := make(map[hunkKey]bool, len(section.Hunks))
+	for _, ref := range section.Hunks {
+		activeHunks[hunkKey{file: ref.File, hunkIndex: ref.HunkIndex}] = true
+	}
 
-	// Build section positions by finding the first hunk in each section
-	sectionPositions := make([]int, len(m.story.Sections))
-	sectionFound := make([]bool, len(m.story.Sections))
-
-	hunkIdx := 0
+	// Create filtered diff with only files/hunks from active section
+	var filteredFiles []diffview.FileDiff
 	for _, file := range m.diff.Files {
-		if !shouldRenderFile(file) {
-			continue
-		}
 		path := filePath(file)
-		for i := range file.Hunks {
-			key := hunkKey{file: path, hunkIndex: i}
-			if sectionIdx, ok := m.hunkToSection[key]; ok {
-				if hunkIdx < len(hunkPositions) && !sectionFound[sectionIdx] {
-					sectionPositions[sectionIdx] = hunkPositions[hunkIdx]
-					sectionFound[sectionIdx] = true
-				}
+		var filteredHunks []diffview.Hunk
+		for hunkIdx, hunk := range file.Hunks {
+			if activeHunks[hunkKey{file: path, hunkIndex: hunkIdx}] {
+				filteredHunks = append(filteredHunks, hunk)
 			}
-			hunkIdx++
+		}
+		// Only include file if it has hunks in this section
+		if len(filteredHunks) > 0 {
+			filteredFile := file
+			filteredFile.Hunks = filteredHunks
+			filteredFiles = append(filteredFiles, filteredFile)
 		}
 	}
 
-	// Filter to only include found sections, keeping track of original indices
-	for i := range m.story.Sections {
-		if sectionFound[i] {
-			positions = append(positions, sectionPositions[i])
-			indices = append(indices, i)
-		}
-	}
-
-	return positions, indices
+	return &diffview.Diff{Files: filteredFiles}
 }
 
-// computePositions calculates line positions accounting for collapse state.
-func (m StoryModel) computePositions() (hunkPositions, filePositions []int) {
-	if m.diff == nil {
-		return nil, nil
+// computePositions calculates line positions for the current section's filtered diff.
+// Returns hunk positions (in display order) and HunkRefs (for looking up original indices).
+func (m StoryModel) computePositions() (hunkPositions []int, hunkRefs []diffview.HunkRef, filePositions []int) {
+	filtered := m.filteredDiff()
+	if filtered == nil {
+		return nil, nil, nil
+	}
+
+	// Build a set of hunks in active section for looking up original indices
+	var sectionHunks []diffview.HunkRef
+	if m.story != nil && m.activeSection >= 0 && m.activeSection < len(m.story.Sections) {
+		sectionHunks = m.story.Sections[m.activeSection].Hunks
 	}
 
 	lineNum := 0
-	for _, file := range m.diff.Files {
+	for _, file := range filtered.Files {
 		if !shouldRenderFile(file) {
 			continue
 		}
@@ -314,10 +312,24 @@ func (m StoryModel) computePositions() (hunkPositions, filePositions []int) {
 		if len(file.Hunks) == 0 {
 			lineNum++ // "(empty)" line
 		} else {
-			for hunkIdx, hunk := range file.Hunks {
+			for filteredIdx, hunk := range file.Hunks {
 				hunkPositions = append(hunkPositions, lineNum)
 
-				key := hunkKey{file: path, hunkIndex: hunkIdx}
+				// Find the matching HunkRef to get original index
+				var matchedRef diffview.HunkRef
+				hunkCounter := 0
+				for _, ref := range sectionHunks {
+					if ref.File == path {
+						if hunkCounter == filteredIdx {
+							matchedRef = ref
+							break
+						}
+						hunkCounter++
+					}
+				}
+				hunkRefs = append(hunkRefs, matchedRef)
+
+				key := hunkKey{file: matchedRef.File, hunkIndex: matchedRef.HunkIndex}
 				if m.collapsedHunks[key] {
 					lineNum++ // collapsed: single line
 				} else {
@@ -327,37 +339,25 @@ func (m StoryModel) computePositions() (hunkPositions, filePositions []int) {
 			}
 		}
 	}
-	return hunkPositions, filePositions
+	return hunkPositions, hunkRefs, filePositions
 }
 
-// gotoNextSection scrolls to the next section.
+// gotoNextSection switches to the next section.
 func (m *StoryModel) gotoNextSection() {
-	if len(m.sectionPositions) == 0 {
+	if m.story == nil || len(m.story.Sections) == 0 {
 		return
 	}
-	currentLine := m.viewport.YOffset
-	// Find index of current section (first one >= currentLine)
-	currentIdx := -1
-	for i, pos := range m.sectionPositions {
-		if pos >= currentLine {
-			currentIdx = i
-			break
-		}
-	}
-	// If no position >= currentLine, we're past all sections
-	if currentIdx == -1 {
-		return
-	}
-	// Navigate to next section if it exists
-	nextIdx := currentIdx + 1
-	if nextIdx < len(m.sectionPositions) {
-		m.viewport.SetYOffset(m.sectionPositions[nextIdx])
+	// Move to next section if possible
+	if m.activeSection < len(m.story.Sections)-1 {
+		m.activeSection++
+		m.viewport.SetContent(m.renderContent())
+		m.viewport.GotoTop()
 	}
 }
 
 // toggleCurrentHunkCollapse toggles the collapse state of the hunk at the current position.
 func (m *StoryModel) toggleCurrentHunkCollapse() {
-	hunkPositions, _ := m.computePositions()
+	hunkPositions, hunkRefs, _ := m.computePositions()
 	if len(hunkPositions) == 0 {
 		return
 	}
@@ -379,92 +379,66 @@ func (m *StoryModel) toggleCurrentHunkCollapse() {
 		currentHunkIdx = 0
 	}
 
-	if currentHunkIdx == -1 {
+	if currentHunkIdx == -1 || currentHunkIdx >= len(hunkRefs) {
 		return
 	}
 
-	// Find the hunk key for this index
-	key := m.hunkKeyAtIndex(currentHunkIdx)
-	if key == nil {
-		return
-	}
+	// Get the hunk key using the matched HunkRef (with original indices)
+	ref := hunkRefs[currentHunkIdx]
+	key := hunkKey{file: ref.File, hunkIndex: ref.HunkIndex}
 
 	// Toggle collapse state
-	m.collapsedHunks[*key] = !m.collapsedHunks[*key]
+	m.collapsedHunks[key] = !m.collapsedHunks[key]
 
 	// Re-render content
 	m.viewport.SetContent(m.renderContent())
-	m.sectionPositions, m.sectionIndices = m.computeSectionPositions()
 }
 
-// toggleAllCollapse toggles all hunks between fully collapsed and fully expanded.
+// toggleAllCollapse toggles all hunks in the current section between collapsed and expanded.
 func (m *StoryModel) toggleAllCollapse() {
-	if len(m.hunkToSection) == 0 {
+	if m.story == nil || len(m.story.Sections) == 0 {
+		return
+	}
+	if m.activeSection < 0 || m.activeSection >= len(m.story.Sections) {
 		return
 	}
 
-	// Count how many are currently collapsed
+	sectionHunks := m.story.Sections[m.activeSection].Hunks
+	if len(sectionHunks) == 0 {
+		return
+	}
+
+	// Count how many in current section are collapsed
 	collapsedCount := 0
-	for _, collapsed := range m.collapsedHunks {
-		if collapsed {
+	for _, ref := range sectionHunks {
+		key := hunkKey{file: ref.File, hunkIndex: ref.HunkIndex}
+		if m.collapsedHunks[key] {
 			collapsedCount++
 		}
 	}
 
 	// If more than half are collapsed, expand all; otherwise collapse all
-	newState := collapsedCount <= len(m.hunkToSection)/2
+	newState := collapsedCount <= len(sectionHunks)/2
 
-	for key := range m.hunkToSection {
+	for _, ref := range sectionHunks {
+		key := hunkKey{file: ref.File, hunkIndex: ref.HunkIndex}
 		m.collapsedHunks[key] = newState
 	}
 
 	// Re-render content
 	m.viewport.SetContent(m.renderContent())
-	m.sectionPositions, m.sectionIndices = m.computeSectionPositions()
 }
 
-// hunkKeyAtIndex returns the hunk key for the hunk at the given rendered index.
-func (m StoryModel) hunkKeyAtIndex(idx int) *hunkKey {
-	i := 0
-	for _, file := range m.diff.Files {
-		if !shouldRenderFile(file) {
-			continue
-		}
-		path := filePath(file)
-		for hunkIdx := range file.Hunks {
-			if i == idx {
-				key := hunkKey{file: path, hunkIndex: hunkIdx}
-				return &key
-			}
-			i++
-		}
-	}
-	return nil
-}
-
-// gotoPrevSection scrolls to the previous section.
+// gotoPrevSection switches to the previous section.
 func (m *StoryModel) gotoPrevSection() {
-	if len(m.sectionPositions) == 0 {
+	if m.story == nil || len(m.story.Sections) == 0 {
 		return
 	}
-	currentLine := m.viewport.YOffset
-	// Find index of current section (first one >= currentLine)
-	currentIdx := -1
-	for i, pos := range m.sectionPositions {
-		if pos >= currentLine {
-			currentIdx = i
-			break
-		}
-	}
-	// If no position >= currentLine, we're past all sections, go to last
-	if currentIdx == -1 {
-		m.viewport.SetYOffset(m.sectionPositions[len(m.sectionPositions)-1])
-		return
-	}
-	// Navigate to previous section if it exists
-	prevIdx := currentIdx - 1
-	if prevIdx >= 0 {
-		m.viewport.SetYOffset(m.sectionPositions[prevIdx])
+	// Move to previous section if possible
+	if m.activeSection > 0 {
+		m.activeSection--
+		m.viewport.SetContent(m.renderContent())
+		m.viewport.GotoTop()
 	}
 }
 
@@ -491,7 +465,7 @@ func (m StoryModel) statusBarView() string {
 		Foreground(lipgloss.Color(m.palette.UIForeground))
 
 	// Format position info
-	hunkPositions, filePositions := m.computePositions()
+	hunkPositions, _, filePositions := m.computePositions()
 	fileIdx, fileTotal := m.currentPosition(filePositions)
 	hunkIdx, hunkTotal := m.currentPosition(hunkPositions)
 	sectionIdx, sectionTotal, sectionTitle := m.currentSection()
@@ -565,44 +539,14 @@ func (m StoryModel) scrollPosition() string {
 // currentSection returns the current section index (1-based), total count, and title.
 // Returns (0, 0, "") if there are no sections.
 func (m StoryModel) currentSection() (current, total int, title string) {
-	if m.story == nil || len(m.story.Sections) == 0 || len(m.sectionPositions) == 0 {
+	if m.story == nil || len(m.story.Sections) == 0 {
 		return 0, 0, ""
 	}
 
-	total = len(m.sectionPositions)
-	currentLine := m.viewport.YOffset
-	current = 1
-
-	// Find which section we're currently in based on viewport position.
-	// The current section is the last one whose start position is at or before the viewport top.
-	positionIdx := 0
-	for i, pos := range m.sectionPositions {
-		if pos <= currentLine {
-			current = i + 1
-			positionIdx = i
-		} else {
-			break
-		}
-	}
-
-	// Special case: when at bottom, if a later section starts within the viewport,
-	// show that section instead. This handles the case where the viewport can't
-	// scroll far enough to have section N's position <= YOffset.
-	if m.viewport.AtBottom() && positionIdx < len(m.sectionPositions)-1 {
-		nextSectionPos := m.sectionPositions[positionIdx+1]
-		viewportBottom := currentLine + m.viewport.Height
-		if nextSectionPos < viewportBottom {
-			positionIdx++
-			current = positionIdx + 1
-		}
-	}
-
-	// Get the title from the story section using the stored index mapping
-	if positionIdx < len(m.sectionIndices) {
-		storySectionIdx := m.sectionIndices[positionIdx]
-		if storySectionIdx < len(m.story.Sections) {
-			title = m.story.Sections[storySectionIdx].Title
-		}
+	total = len(m.story.Sections)
+	current = m.activeSection + 1 // Convert 0-based to 1-based
+	if m.activeSection >= 0 && m.activeSection < len(m.story.Sections) {
+		title = m.story.Sections[m.activeSection].Title
 	}
 
 	return current, total, title
