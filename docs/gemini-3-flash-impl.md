@@ -181,15 +181,18 @@ func NewClassifier(ctx context.Context, apiKey string) (*Classifier, error) {
 
     return &Classifier{
         client:     client,
-        model:      "gemini-2.5-flash-lite",
+        model:      "gemini-3-flash-preview",
         maxRetries: 5,
         config: &genai.GenerateContentConfig{
-            Temperature:      genai.Ptr(float32(0.3)),
+            // Temperature omitted - use Gemini 3 default (1.0)
             ResponseMIMEType: "application/json",
             SystemInstruction: &genai.Content{
                 Parts: []*genai.Part{{Text: systemPrompt}},
             },
             ResponseSchema: classificationSchema(),
+            ThinkingConfig: &genai.ThinkingConfig{
+                ThinkingLevel: genai.ThinkingLevelMedium,
+            },
         },
     }, nil
 }
