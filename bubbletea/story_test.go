@@ -175,78 +175,17 @@ func TestStoryModel_SectionNavigation(t *testing.T) {
 	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
 }
 
-func TestStoryModel_HunkCollapsing(t *testing.T) {
+func TestStoryModel_NoToggleCollapseKey(t *testing.T) {
 	t.Parallel()
 
-	diff := &diffview.Diff{
-		Files: []diffview.FileDiff{
-			{
-				NewPath:   "b/file.go",
-				Operation: diffview.FileModified,
-				Hunks: []diffview.Hunk{
-					{
-						OldStart: 1, OldCount: 5, NewStart: 1, NewCount: 5,
-						Lines: []diffview.Line{
-							{Type: diffview.LineContext, Content: "HUNK_CONTENT_MARKER"},
-							{Type: diffview.LineContext, Content: "line 2"},
-							{Type: diffview.LineContext, Content: "line 3"},
-							{Type: diffview.LineContext, Content: "line 4"},
-							{Type: diffview.LineContext, Content: "line 5"},
-						},
-					},
-				},
-			},
-		},
+	// Verify ToggleCollapseAll is bound to 'z'.
+	// Note: The 'o' keybinding (ToggleCollapse) was removed from the struct,
+	// which is enforced at compile time - any code referencing the field won't compile.
+	keymap := bubbletea.DefaultStoryKeyMap()
+
+	if keymap.ToggleCollapseAll.Help().Key != "z" {
+		t.Errorf("expected ToggleCollapseAll to be bound to 'z', got %q", keymap.ToggleCollapseAll.Help().Key)
 	}
-
-	story := &diffview.StoryClassification{
-		Sections: []diffview.Section{
-			{
-				Role:  "core",
-				Title: "Changes",
-				Hunks: []diffview.HunkRef{
-					{
-						File:         "file.go",
-						HunkIndex:    0,
-						Category:     "core",
-						Collapsed:    false,
-						CollapseText: "Core changes summary",
-					},
-				},
-			},
-		},
-	}
-
-	m := bubbletea.NewStoryModel(diff, story)
-	tm := teatest.NewTestModel(t, m,
-		teatest.WithInitialTermSize(80, 24),
-	)
-
-	// Wait for initial render with hunk content visible
-	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("HUNK_CONTENT_MARKER"))
-	})
-
-	// Press 'o' to toggle collapse (should collapse the hunk)
-	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'o'}})
-
-	// Wait for collapse text to appear (hunk content should be hidden)
-	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		hasCollapseText := bytes.Contains(out, []byte("Core changes summary"))
-		noContent := !bytes.Contains(out, []byte("HUNK_CONTENT_MARKER"))
-		return hasCollapseText && noContent
-	})
-
-	// Press 'o' again to expand
-	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'o'}})
-
-	// Wait for hunk content to reappear
-	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("HUNK_CONTENT_MARKER"))
-	})
-
-	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
-	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
 }
 
 func TestStoryModel_NoiseHunksCollapsedByDefault(t *testing.T) {
@@ -298,6 +237,106 @@ func TestStoryModel_NoiseHunksCollapsedByDefault(t *testing.T) {
 		hasCollapseText := bytes.Contains(out, []byte("Noise hunk"))
 		noContent := !bytes.Contains(out, []byte("NOISE_CONTENT_MARKER"))
 		return hasCollapseText && noContent
+	})
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}
+
+func TestStoryModel_ZKeyOnlyTogglesLLMCollapsedHunks(t *testing.T) {
+	t.Parallel()
+
+	// Create diff with two hunks in one section:
+	// - Hunk 0: LLM-collapsed (Collapsed: true) - should toggle with 'z'
+	// - Hunk 1: Never collapsed (Collapsed: false) - should NOT toggle with 'z'
+	diff := &diffview.Diff{
+		Files: []diffview.FileDiff{
+			{
+				NewPath:   "b/file.go",
+				Operation: diffview.FileModified,
+				Hunks: []diffview.Hunk{
+					{
+						OldStart: 1, OldCount: 2, NewStart: 1, NewCount: 2,
+						Lines: []diffview.Line{
+							{Type: diffview.LineContext, Content: "COLLAPSED_HUNK_CONTENT"},
+							{Type: diffview.LineContext, Content: "more collapsed content"},
+						},
+					},
+					{
+						OldStart: 10, OldCount: 2, NewStart: 10, NewCount: 2,
+						Lines: []diffview.Line{
+							{Type: diffview.LineContext, Content: "NORMAL_HUNK_CONTENT"},
+							{Type: diffview.LineContext, Content: "more normal content"},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	story := &diffview.StoryClassification{
+		Sections: []diffview.Section{
+			{
+				Role:  "mixed",
+				Title: "Mixed Hunks",
+				Hunks: []diffview.HunkRef{
+					{
+						File:         "file.go",
+						HunkIndex:    0,
+						Category:     "noise",
+						Collapsed:    true, // LLM says collapse this
+						CollapseText: "Collapsed summary",
+					},
+					{
+						File:         "file.go",
+						HunkIndex:    1,
+						Category:     "core",
+						Collapsed:    false, // LLM says show this expanded
+						CollapseText: "Core summary",
+					},
+				},
+			},
+		},
+	}
+
+	m := bubbletea.NewStoryModel(diff, story)
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(80, 40),
+	)
+
+	// Initial state:
+	// - Collapsed hunk: shows "Collapsed summary", no content
+	// - Normal hunk: shows "NORMAL_HUNK_CONTENT" (expanded)
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		collapsedHunkHidden := !bytes.Contains(out, []byte("COLLAPSED_HUNK_CONTENT"))
+		collapsedSummaryVisible := bytes.Contains(out, []byte("Collapsed summary"))
+		normalHunkExpanded := bytes.Contains(out, []byte("NORMAL_HUNK_CONTENT"))
+		return collapsedHunkHidden && collapsedSummaryVisible && normalHunkExpanded
+	})
+
+	// Press 'z' to toggle LLM-collapsed hunks (expands the collapsed one)
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'z'}})
+
+	// After first 'z':
+	// - Previously collapsed hunk: now expanded, shows content
+	// - Normal hunk: still expanded (unchanged)
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		collapsedHunkNowExpanded := bytes.Contains(out, []byte("COLLAPSED_HUNK_CONTENT"))
+		normalHunkStillExpanded := bytes.Contains(out, []byte("NORMAL_HUNK_CONTENT"))
+		return collapsedHunkNowExpanded && normalHunkStillExpanded
+	})
+
+	// Press 'z' again to toggle back (collapses the LLM-collapsed one)
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'z'}})
+
+	// After second 'z':
+	// - LLM-collapsed hunk: back to collapsed
+	// - Normal hunk: still expanded (never affected by 'z')
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		collapsedHunkHidden := !bytes.Contains(out, []byte("COLLAPSED_HUNK_CONTENT"))
+		collapsedSummaryVisible := bytes.Contains(out, []byte("Collapsed summary"))
+		normalHunkStillExpanded := bytes.Contains(out, []byte("NORMAL_HUNK_CONTENT"))
+		return collapsedHunkHidden && collapsedSummaryVisible && normalHunkStillExpanded
 	})
 
 	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
@@ -878,8 +917,8 @@ func TestStoryModel_ExpandedHunksGetFullStyling(t *testing.T) {
 		return hasCollapseText && noCodeContent
 	})
 
-	// Step 2: Press 'o' to expand the hunk
-	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'o'}})
+	// Step 2: Press 'z' to toggle all LLM-collapsed hunks (expands them)
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'z'}})
 
 	// Step 3: Verify expanded state has full styling
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {

@@ -24,7 +24,6 @@ type StoryKeyMap struct {
 	PrevSection key.Binding
 
 	// Hunk collapsing (story-specific)
-	ToggleCollapse    key.Binding
 	ToggleCollapseAll key.Binding
 
 	// Export
@@ -86,13 +85,9 @@ func DefaultStoryKeyMap() StoryKeyMap {
 			key.WithKeys("S"),
 			key.WithHelp("S", "previous section"),
 		),
-		ToggleCollapse: key.NewBinding(
-			key.WithKeys("o"),
-			key.WithHelp("o", "toggle collapse"),
-		),
 		ToggleCollapseAll: key.NewBinding(
 			key.WithKeys("z"),
-			key.WithHelp("z", "toggle all collapsed"),
+			key.WithHelp("z", "toggle LLM-collapsed"),
 		),
 		SaveCase: key.NewBinding(
 			key.WithKeys("e"),

@@ -17,10 +17,11 @@ type StoryModel struct {
 	story *diffview.StoryClassification
 
 	// Pre-computed mappings (built on construction)
-	hunkToSection  map[hunkKey]int    // hunk → section index
-	hunkCategories map[hunkKey]string // hunk → category for styling
-	collapseText   map[hunkKey]string // hunk → collapse text
-	collapsedHunks map[hunkKey]bool   // tracks runtime collapse state
+	hunkToSection     map[hunkKey]int    // hunk → section index
+	hunkCategories    map[hunkKey]string // hunk → category for styling
+	collapseText      map[hunkKey]string // hunk → collapse text
+	collapsedHunks    map[hunkKey]bool   // tracks runtime collapse state
+	llmCollapsedHunks map[hunkKey]bool   // tracks which hunks were originally collapsed by LLM
 
 	// Section filtering
 	activeSection int  // 0 = intro (if showIntro) or first code section
@@ -142,6 +143,7 @@ func NewStoryModel(diff *diffview.Diff, story *diffview.StoryClassification, opt
 	hunkCategories := make(map[hunkKey]string)
 	collapseText := make(map[hunkKey]string)
 	collapsedHunks := make(map[hunkKey]bool)
+	llmCollapsedHunks := make(map[hunkKey]bool)
 
 	if story != nil {
 		for sectionIdx, section := range story.Sections {
@@ -155,29 +157,31 @@ func NewStoryModel(diff *diffview.Diff, story *diffview.StoryClassification, opt
 				// Collapse if explicitly marked or noise category
 				if ref.Collapsed || ref.Category == "noise" {
 					collapsedHunks[key] = true
+					llmCollapsedHunks[key] = true // Track original LLM decision
 				}
 			}
 		}
 	}
 
 	return StoryModel{
-		diff:             diff,
-		story:            story,
-		hunkToSection:    hunkToSection,
-		hunkCategories:   hunkCategories,
-		collapseText:     collapseText,
-		collapsedHunks:   collapsedHunks,
-		showIntro:        cfg.showIntro,
-		languageDetector: cfg.languageDetector,
-		tokenizer:        cfg.tokenizer,
-		wordDiffer:       cfg.wordDiffer,
-		input:            cfg.input,
-		caseSaver:        cfg.caseSaver,
-		caseSaverPath:    cfg.caseSaverPath,
-		keymap:           DefaultStoryKeyMap(),
-		styles:           styles,
-		palette:          palette,
-		renderer:         cfg.renderer,
+		diff:              diff,
+		story:             story,
+		hunkToSection:     hunkToSection,
+		hunkCategories:    hunkCategories,
+		collapseText:      collapseText,
+		collapsedHunks:    collapsedHunks,
+		llmCollapsedHunks: llmCollapsedHunks,
+		showIntro:         cfg.showIntro,
+		languageDetector:  cfg.languageDetector,
+		tokenizer:         cfg.tokenizer,
+		wordDiffer:        cfg.wordDiffer,
+		input:             cfg.input,
+		caseSaver:         cfg.caseSaver,
+		caseSaverPath:     cfg.caseSaverPath,
+		keymap:            DefaultStoryKeyMap(),
+		styles:            styles,
+		palette:           palette,
+		renderer:          cfg.renderer,
 	}
 }
 
@@ -229,9 +233,6 @@ func (m StoryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case key.Matches(msg, m.keymap.PrevSection):
 			m.gotoPrevSection()
-			return m, nil
-		case key.Matches(msg, m.keymap.ToggleCollapse):
-			m.toggleCurrentHunkCollapse()
 			return m, nil
 		case key.Matches(msg, m.keymap.ToggleCollapseAll):
 			m.toggleAllCollapse()
@@ -474,46 +475,8 @@ func (m *StoryModel) gotoNextSection() {
 	}
 }
 
-// toggleCurrentHunkCollapse toggles the collapse state of the hunk at the current position.
-func (m *StoryModel) toggleCurrentHunkCollapse() {
-	hunkPositions, hunkRefs, _ := m.computePositions()
-	if len(hunkPositions) == 0 {
-		return
-	}
-
-	currentLine := m.viewport.YOffset
-
-	// Find current hunk (last position <= currentLine)
-	currentHunkIdx := -1
-	for i, pos := range hunkPositions {
-		if pos <= currentLine {
-			currentHunkIdx = i
-		} else {
-			break
-		}
-	}
-
-	// Default to first hunk if at top
-	if currentHunkIdx == -1 && len(hunkPositions) > 0 {
-		currentHunkIdx = 0
-	}
-
-	if currentHunkIdx == -1 || currentHunkIdx >= len(hunkRefs) {
-		return
-	}
-
-	// Get the hunk key using the matched HunkRef (with original indices)
-	ref := hunkRefs[currentHunkIdx]
-	key := hunkKey{file: ref.File, hunkIndex: ref.HunkIndex}
-
-	// Toggle collapse state
-	m.collapsedHunks[key] = !m.collapsedHunks[key]
-
-	// Re-render content
-	m.viewport.SetContent(m.renderContent())
-}
-
-// toggleAllCollapse toggles all hunks in the current section between collapsed and expanded.
+// toggleAllCollapse toggles only LLM-collapsed hunks in the current section.
+// Hunks that were never collapsed by the LLM are not affected.
 func (m *StoryModel) toggleAllCollapse() {
 	if m.story == nil || len(m.story.Sections) == 0 {
 		return
@@ -528,20 +491,31 @@ func (m *StoryModel) toggleAllCollapse() {
 		return
 	}
 
-	// Count how many in current section are collapsed
-	collapsedCount := 0
+	// Only consider hunks that were originally collapsed by LLM
+	var llmCollapsedKeys []hunkKey
 	for _, ref := range sectionHunks {
 		key := hunkKey{file: ref.File, hunkIndex: ref.HunkIndex}
+		if m.llmCollapsedHunks[key] {
+			llmCollapsedKeys = append(llmCollapsedKeys, key)
+		}
+	}
+
+	if len(llmCollapsedKeys) == 0 {
+		return // No LLM-collapsed hunks to toggle
+	}
+
+	// Count how many LLM-collapsed hunks are currently collapsed
+	collapsedCount := 0
+	for _, key := range llmCollapsedKeys {
 		if m.collapsedHunks[key] {
 			collapsedCount++
 		}
 	}
 
 	// If more than half are collapsed, expand all; otherwise collapse all
-	newState := collapsedCount <= len(sectionHunks)/2
+	newState := collapsedCount <= len(llmCollapsedKeys)/2
 
-	for _, ref := range sectionHunks {
-		key := hunkKey{file: ref.File, hunkIndex: ref.HunkIndex}
+	for _, key := range llmCollapsedKeys {
 		m.collapsedHunks[key] = newState
 	}
 
@@ -624,7 +598,7 @@ func (m StoryModel) statusBarView() string {
 	}
 
 	content += barStyle.Render(scrollPos) + sep +
-		dimStyle.Render("j/k:scroll  s/S:section  o:collapse  z:all  e:save  q:quit") +
+		dimStyle.Render("j/k:scroll  s/S:section  z:toggle noise  e:save  q:quit") +
 		barStyle.Render("  ")
 
 	// Right-align by padding left side with background
