@@ -1,0 +1,234 @@
+package bubbletea_test
+
+import (
+	"bytes"
+	"context"
+	"testing"
+	"time"
+
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/exp/teatest"
+	diffview "github.com/fwojciec/diffstory"
+	"github.com/fwojciec/diffstory/bubbletea"
+	dv "github.com/fwojciec/diffstory/lipgloss"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func TestModel_Init(t *testing.T) {
+	t.Parallel()
+
+	diff := &diffview.Diff{
+		Files: []diffview.FileDiff{
+			{
+				OldPath:   "a/file.go",
+				NewPath:   "b/file.go",
+				Operation: diffview.FileModified,
+				Hunks: []diffview.Hunk{
+					{
+						OldStart: 1,
+						OldCount: 3,
+						NewStart: 1,
+						NewCount: 4,
+						Lines: []diffview.Line{
+							{Type: diffview.LineContext, Content: "context line"},
+							{Type: diffview.LineDeleted, Content: "deleted line"},
+							{Type: diffview.LineAdded, Content: "added line 1"},
+							{Type: diffview.LineAdded, Content: "added line 2"},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	m := bubbletea.NewModel(diff)
+	cmd := m.Init()
+
+	assert.Nil(t, cmd, "Init should return nil command")
+}
+
+func TestModel_ViewBeforeReady(t *testing.T) {
+	t.Parallel()
+
+	diff := &diffview.Diff{}
+	m := bubbletea.NewModel(diff)
+
+	view := m.View()
+
+	assert.Contains(t, view, "Loading", "View should show loading state before WindowSizeMsg")
+}
+
+func TestModel_ViewAfterReady(t *testing.T) {
+	t.Parallel()
+
+	diff := &diffview.Diff{
+		Files: []diffview.FileDiff{
+			{
+				OldPath:   "a/test.go",
+				NewPath:   "b/test.go",
+				Operation: diffview.FileModified,
+				Hunks: []diffview.Hunk{
+					{
+						OldStart: 1,
+						OldCount: 1,
+						NewStart: 1,
+						NewCount: 1,
+						Lines: []diffview.Line{
+							{Type: diffview.LineContext, Content: "test content"},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	m := bubbletea.NewModel(diff)
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(80, 24),
+	)
+
+	// Wait for content to appear - this verifies the view is rendered correctly
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("test content"))
+	})
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}
+
+func TestModel_QuitOnQ(t *testing.T) {
+	t.Parallel()
+
+	diff := &diffview.Diff{}
+	m := bubbletea.NewModel(diff)
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(80, 24),
+	)
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}
+
+func TestModel_QuitOnCtrlC(t *testing.T) {
+	t.Parallel()
+
+	diff := &diffview.Diff{}
+	m := bubbletea.NewModel(diff)
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(80, 24),
+	)
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyCtrlC})
+
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}
+
+func TestModel_WindowResize(t *testing.T) {
+	t.Parallel()
+
+	diff := &diffview.Diff{
+		Files: []diffview.FileDiff{
+			{
+				OldPath:   "a/resize.go",
+				NewPath:   "b/resize.go",
+				Operation: diffview.FileModified,
+				Hunks: []diffview.Hunk{
+					{
+						Lines: []diffview.Line{
+							{Type: diffview.LineContext, Content: "resize test"},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	m := bubbletea.NewModel(diff)
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(80, 24),
+	)
+
+	// Wait for initial render
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("resize test"))
+	})
+
+	// Resize window
+	tm.Send(tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	// Content should still be visible
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("resize test"))
+	})
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}
+
+func TestViewer_ContextCancellation(t *testing.T) {
+	t.Parallel()
+
+	// Create a context with cancel
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	diff := &diffview.Diff{}
+
+	// Create viewer with custom IO to avoid TTY requirement
+	var in bytes.Buffer
+	var out bytes.Buffer
+	viewer := bubbletea.NewViewer(
+		dv.TestTheme(),
+		bubbletea.WithProgramOptions(
+			tea.WithInput(&in),
+			tea.WithOutput(&out),
+		),
+	)
+
+	// Run viewer in goroutine
+	done := make(chan error, 1)
+	go func() {
+		done <- viewer.View(ctx, diff)
+	}()
+
+	// Give viewer time to start
+	time.Sleep(50 * time.Millisecond)
+
+	// Cancel context - this should terminate the viewer
+	cancel()
+
+	// Viewer should exit within reasonable time
+	select {
+	case err := <-done:
+		// Verify context cancellation causes exit with context.Canceled error
+		require.ErrorIs(t, err, context.Canceled, "viewer should return context.Canceled on cancellation")
+	case <-time.After(1 * time.Second):
+		t.Fatal("viewer did not exit after context cancellation")
+	}
+}
+
+func TestViewer_ContextAlreadyCancelled(t *testing.T) {
+	t.Parallel()
+
+	// Create an already-cancelled context
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // Cancel immediately
+
+	diff := &diffview.Diff{}
+
+	var in bytes.Buffer
+	var out bytes.Buffer
+	viewer := bubbletea.NewViewer(
+		dv.TestTheme(),
+		bubbletea.WithProgramOptions(
+			tea.WithInput(&in),
+			tea.WithOutput(&out),
+		),
+	)
+
+	// Viewer should exit immediately with already-cancelled context
+	err := viewer.View(ctx, diff)
+	require.ErrorIs(t, err, context.Canceled, "viewer should return context.Canceled for pre-cancelled context")
+}
