@@ -137,7 +137,13 @@ func (r *Runner) CommitsInRange(ctx context.Context, repoPath, base, head string
 func (r *Runner) DiffRange(ctx context.Context, repoPath, base, head string) (string, error) {
 	// Three-dot diff: shows changes in head relative to the merge-base with base
 	rangeArg := fmt.Sprintf("%s...%s", base, head)
-	args := []string{"-C", repoPath, "diff", rangeArg}
+	return r.Diff(ctx, repoPath, rangeArg)
+}
+
+// Diff returns the diff for a raw range specification.
+// The rangeSpec is passed directly to git diff.
+func (r *Runner) Diff(ctx context.Context, repoPath, rangeSpec string) (string, error) {
+	args := []string{"-C", repoPath, "diff", rangeSpec}
 	cmd := exec.CommandContext(ctx, "git", args...)
 	output, err := cmd.Output()
 	if err != nil {

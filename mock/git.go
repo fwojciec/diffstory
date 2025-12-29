@@ -20,6 +20,7 @@ type GitRunner struct {
 	MergeCommitsFn   func(ctx context.Context, repoPath string, limit int) ([]string, error)
 	CommitsInRangeFn func(ctx context.Context, repoPath, base, head string) ([]diffview.CommitBrief, error)
 	DiffRangeFn      func(ctx context.Context, repoPath, base, head string) (string, error)
+	DiffFn           func(ctx context.Context, repoPath, rangeSpec string) (string, error)
 	CurrentBranchFn  func(ctx context.Context, repoPath string) (string, error)
 	MergeBaseFn      func(ctx context.Context, repoPath, ref1, ref2 string) (string, error)
 	DefaultBranchFn  func(ctx context.Context, repoPath string) (string, error)
@@ -47,6 +48,10 @@ func (g *GitRunner) CommitsInRange(ctx context.Context, repoPath, base, head str
 
 func (g *GitRunner) DiffRange(ctx context.Context, repoPath, base, head string) (string, error) {
 	return g.DiffRangeFn(ctx, repoPath, base, head)
+}
+
+func (g *GitRunner) Diff(ctx context.Context, repoPath, rangeSpec string) (string, error) {
+	return g.DiffFn(ctx, repoPath, rangeSpec)
 }
 
 func (g *GitRunner) CurrentBranch(ctx context.Context, repoPath string) (string, error) {
