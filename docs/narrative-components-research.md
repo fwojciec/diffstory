@@ -27,7 +27,7 @@
 ### Current Orderings
 - **cause-effect**: problem → fix → test → supporting → cleanup
 - **core-periphery**: core → supporting → cleanup
-- **before-after**: cleanup → core → test → supporting
+- **before-after**: cleanup → core → supporting → test
 - **rule-instances**: rule → exception → core → supporting → cleanup
 - **entry-implementation**: integration → core → test → supporting → cleanup
 
@@ -280,7 +280,7 @@ START: What is the primary nature of this change?
 |-----------|---------|-------------|-----------|
 | cause-effect | problem → fix → test → supporting → cleanup | **Keep** | Follows Freytag perfectly |
 | core-periphery | core → supporting → cleanup | **Keep** | High-impact first, ripples after |
-| before-after | cleanup → core → test → supporting | cleanup → core → supporting → test | Tests validate the "after" state |
+| before-after | cleanup → core → supporting → test | **Keep** | Tests validate the "after" state |
 | rule-instances | rule → exception → core → supporting → cleanup | pattern → instances → test → cleanup | Clearer naming |
 | entry-implementation | integration → core → test → supporting → cleanup | interface → implementation → test → supporting → cleanup | Clearer naming |
 

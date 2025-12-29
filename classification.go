@@ -90,7 +90,7 @@ func narrativeOrder(narrative string) []string {
 	case "core-periphery":
 		return []string{"core", "supporting", "test", "cleanup"}
 	case "before-after":
-		return []string{"cleanup", "core", "test", "supporting"}
+		return []string{"cleanup", "core", "supporting", "test"}
 	case "rule-instances":
 		return []string{"pattern", "core", "test", "supporting", "cleanup"}
 	case "entry-implementation":

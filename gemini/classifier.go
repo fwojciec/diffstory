@@ -180,7 +180,7 @@ Group hunks into sections with meaningful roles that tell the story of the chang
 **Order sections to tell a coherent story.** The array order determines the reading order:
 - cause-effect: problem → fix → test → supporting → cleanup
 - core-periphery: core → supporting → test → cleanup
-- before-after: cleanup (old pattern) → core (new pattern) → test → supporting
+- before-after: cleanup (old pattern) → core (new pattern) → supporting → test
 - rule-instances: pattern → core → test → supporting → cleanup
 - entry-implementation: interface → core → test → supporting → cleanup
 

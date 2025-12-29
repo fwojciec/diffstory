@@ -48,11 +48,11 @@ func TestOrderSections(t *testing.T) {
 		assert.Equal(t, []string{"core", "supporting", "test", "cleanup"}, roles)
 	})
 
-	t.Run("before-after orders cleanup before core before test before supporting", func(t *testing.T) {
+	t.Run("before-after orders cleanup before core before supporting before test", func(t *testing.T) {
 		t.Parallel()
 
 		// In before-after: cleanup = "before" (old pattern removal), core = "after" (new pattern)
-		// supporting goes at end for incidental changes
+		// Tests come last as they validate the final "after" state (resolution/denouement)
 		classification := &diffview.StoryClassification{
 			Narrative: "before-after",
 			Sections: []diffview.Section{
@@ -66,7 +66,7 @@ func TestOrderSections(t *testing.T) {
 		classification.OrderSections()
 
 		roles := extractRoles(classification.Sections)
-		assert.Equal(t, []string{"cleanup", "core", "test", "supporting"}, roles)
+		assert.Equal(t, []string{"cleanup", "core", "supporting", "test"}, roles)
 	})
 
 	t.Run("rule-instances orders pattern before core before test before supporting before cleanup", func(t *testing.T) {
