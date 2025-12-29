@@ -329,7 +329,7 @@ func TestStoryModel_CategoryStyling(t *testing.T) {
 					{
 						File:      "file.go",
 						HunkIndex: 0,
-						Category:  "refactoring", // This should be rendered with dimmed style
+						Category:  "refactoring", // Dimmed when collapsed, full styling when expanded
 					},
 				},
 			},

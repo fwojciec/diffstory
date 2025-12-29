@@ -110,27 +110,23 @@ func renderDiff(cfg renderConfig) string {
 		for hunkIdx, hunk := range file.Hunks {
 			key := hunkKey{file: path, hunkIndex: hunkIdx}
 
-			// Determine if this hunk should be dimmed based on category
-			// (must happen before collapsed check so collapsed hunks can be dimmed too)
-			isDimmed := false
-			if cfg.hunkCategories != nil {
-				category := cfg.hunkCategories[key]
-				isDimmed = category == "refactoring" || category == "systematic" || category == "noise"
-			}
-
 			// Check if this hunk is collapsed
 			if cfg.collapsedHunks != nil && cfg.collapsedHunks[key] {
-				// Render collapsed hunk as a single line, with dimming if applicable
+				// Dim collapsed hunks based on category (refactoring/systematic/noise)
+				// Once unfolded, hunks get full styling - dimming is just a "skip this" hint
 				collapseStyle := hunkHeaderStyle
-				if isDimmed {
-					collapseStyle = dimmedStyle
+				if cfg.hunkCategories != nil {
+					category := cfg.hunkCategories[key]
+					if category == "refactoring" || category == "systematic" || category == "noise" {
+						collapseStyle = dimmedStyle
+					}
 				}
 				sb.WriteString(renderCollapsedHunk(hunk, key, cfg, collapseStyle))
 				sb.WriteString("\n")
 				continue
 			}
 
-			// Select styles based on dimming
+			// Expanded hunks always get full styling
 			currentHunkHeaderStyle := hunkHeaderStyle
 			currentAddedStyle := addedStyle
 			currentDeletedStyle := deletedStyle
@@ -138,16 +134,6 @@ func renderDiff(cfg renderConfig) string {
 			currentAddedGutterStyle := addedGutterStyle
 			currentDeletedGutterStyle := deletedGutterStyle
 			currentLineNumStyle := lineNumStyle
-
-			if isDimmed {
-				currentHunkHeaderStyle = dimmedStyle
-				currentAddedStyle = dimmedStyle
-				currentDeletedStyle = dimmedStyle
-				currentContextStyle = dimmedStyle
-				currentAddedGutterStyle = dimmedStyle
-				currentDeletedGutterStyle = dimmedStyle
-				currentLineNumStyle = dimmedStyle
-			}
 
 			// Render hunk header with styling
 			header := formatHunkHeader(hunk)
@@ -167,19 +153,11 @@ func renderDiff(cfg renderConfig) string {
 				case diffview.LineAdded:
 					gutterStyle = currentAddedGutterStyle
 					lineStyle = currentAddedStyle
-					if isDimmed {
-						highlightStyle = dimmedStyle
-					} else {
-						highlightStyle = addedHighlightStyle
-					}
+					highlightStyle = addedHighlightStyle
 				case diffview.LineDeleted:
 					gutterStyle = currentDeletedGutterStyle
 					lineStyle = currentDeletedStyle
-					if isDimmed {
-						highlightStyle = dimmedStyle
-					} else {
-						highlightStyle = deletedHighlightStyle
-					}
+					highlightStyle = deletedHighlightStyle
 				default:
 					gutterStyle = currentLineNumStyle
 					lineStyle = currentContextStyle
@@ -208,9 +186,8 @@ func renderDiff(cfg renderConfig) string {
 						tokens = cfg.tokenizer.Tokenize(language, lineContent)
 					}
 
-					if tokens != nil && !isDimmed {
+					if tokens != nil {
 						// Render with syntax highlighting (prefix + tokens)
-						// Skip syntax highlighting for dimmed hunks so they appear uniformly muted
 						var colors diffview.ColorPair
 						switch line.Type {
 						case diffview.LineAdded:
