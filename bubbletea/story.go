@@ -291,19 +291,27 @@ func (m StoryModel) renderContent() string {
 func (m StoryModel) renderIntro() string {
 	var b strings.Builder
 
+	hasSummary := m.story != nil && m.story.Summary != ""
+	hasSections := m.story != nil && len(m.story.Sections) > 0
+
 	// Summary
-	if m.story != nil && m.story.Summary != "" {
+	if hasSummary {
 		b.WriteString("\n")
 		b.WriteString(m.story.Summary)
 		b.WriteString("\n")
 	}
 
 	// Section list
-	if m.story != nil && len(m.story.Sections) > 0 {
+	if hasSections {
 		b.WriteString("\nSections:\n")
 		for i, section := range m.story.Sections {
 			fmt.Fprintf(&b, "  %d. %s\n", i+1, section.Title)
 		}
+	}
+
+	// Fallback if no content
+	if !hasSummary && !hasSections {
+		b.WriteString("\n(No classification available)\n")
 	}
 
 	// Navigation hint
