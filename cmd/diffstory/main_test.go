@@ -201,3 +201,93 @@ func TestApp_Run_EmptyDiff(t *testing.T) {
 	require.Error(t, err)
 	assert.Equal(t, main.ErrNoChanges, err)
 }
+
+func TestApp_Run_BranchMode_GetsDiffFromGit(t *testing.T) {
+	t.Parallel()
+
+	diffFromGit := `diff --git a/feature.go b/feature.go
+new file mode 100644
+--- /dev/null
++++ b/feature.go
+@@ -0,0 +1,3 @@
++package main
++
++func newFeature() {}
+`
+
+	app := &main.App{
+		GitRunner: &mock.GitRunner{
+			DiffRangeFn: func(_ context.Context, repoPath, base, head string) (string, error) {
+				assert.Equal(t, "/repo", repoPath)
+				assert.Equal(t, "main", base)
+				assert.Equal(t, "HEAD", head)
+				return diffFromGit, nil
+			},
+		},
+		RepoPath:   "/repo",
+		BaseBranch: "main",
+		Classifier: &mock.StoryClassifier{
+			ClassifyFn: func(_ context.Context, input diffview.ClassificationInput) (*diffview.StoryClassification, error) {
+				require.Len(t, input.Diff.Files, 1)
+				assert.Equal(t, "feature.go", input.Diff.Files[0].NewPath)
+				return &diffview.StoryClassification{ChangeType: "feature"}, nil
+			},
+		},
+	}
+
+	diff, classification, err := app.Run(context.Background())
+	require.NoError(t, err)
+	require.NotNil(t, diff)
+	require.NotNil(t, classification)
+	assert.Len(t, diff.Files, 1)
+	assert.Equal(t, "feature.go", diff.Files[0].NewPath)
+}
+
+func TestApp_Run_BranchMode_GitError(t *testing.T) {
+	t.Parallel()
+
+	app := &main.App{
+		GitRunner: &mock.GitRunner{
+			DiffRangeFn: func(_ context.Context, _, _, _ string) (string, error) {
+				return "", errors.New("git diff failed: not a git repository")
+			},
+		},
+		RepoPath:   "/not-a-repo",
+		BaseBranch: "main",
+		Classifier: &mock.StoryClassifier{
+			ClassifyFn: func(_ context.Context, _ diffview.ClassificationInput) (*diffview.StoryClassification, error) {
+				t.Error("Classifier should not be called when git fails")
+				return nil, nil
+			},
+		},
+	}
+
+	_, _, err := app.Run(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "git diff failed")
+}
+
+func TestApp_Run_BranchMode_EmptyDiff(t *testing.T) {
+	t.Parallel()
+
+	// When on main branch or no changes, git diff returns empty
+	app := &main.App{
+		GitRunner: &mock.GitRunner{
+			DiffRangeFn: func(_ context.Context, _, _, _ string) (string, error) {
+				return "", nil
+			},
+		},
+		RepoPath:   "/repo",
+		BaseBranch: "main",
+		Classifier: &mock.StoryClassifier{
+			ClassifyFn: func(_ context.Context, _ diffview.ClassificationInput) (*diffview.StoryClassification, error) {
+				t.Error("Classifier should not be called for empty diff")
+				return nil, nil
+			},
+		},
+	}
+
+	_, _, err := app.Run(context.Background())
+	require.Error(t, err)
+	assert.Equal(t, main.ErrNoChanges, err)
+}
