@@ -4,8 +4,8 @@ import (
 	"testing"
 
 	chromalib "github.com/alecthomas/chroma/v2"
-	"github.com/fwojciec/diffview"
-	"github.com/fwojciec/diffview/chroma"
+	"github.com/fwojciec/diffstory"
+	"github.com/fwojciec/diffstory/chroma"
 	"github.com/stretchr/testify/assert"
 )
 

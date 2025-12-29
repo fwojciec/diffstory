@@ -11,7 +11,7 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/fwojciec/diffview"
+	"github.com/fwojciec/diffstory"
 )
 
 // Panel identifies which panel is active.

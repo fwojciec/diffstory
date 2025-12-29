@@ -6,8 +6,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/fwojciec/diffview"
-	"github.com/fwojciec/diffview/gemini"
+	"github.com/fwojciec/diffstory"
+	"github.com/fwojciec/diffstory/gemini"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

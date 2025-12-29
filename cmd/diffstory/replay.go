@@ -3,7 +3,7 @@ package main
 import (
 	"errors"
 
-	"github.com/fwojciec/diffview"
+	"github.com/fwojciec/diffstory"
 )
 
 // ErrIndexOutOfBounds is returned when the requested case index is invalid.

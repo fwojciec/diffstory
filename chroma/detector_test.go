@@ -3,7 +3,7 @@ package chroma_test
 import (
 	"testing"
 
-	"github.com/fwojciec/diffview/chroma"
+	"github.com/fwojciec/diffstory/chroma"
 	"github.com/stretchr/testify/assert"
 )
 

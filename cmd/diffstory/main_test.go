@@ -5,9 +5,9 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/fwojciec/diffview"
-	main "github.com/fwojciec/diffview/cmd/diffstory"
-	"github.com/fwojciec/diffview/mock"
+	"github.com/fwojciec/diffstory"
+	main "github.com/fwojciec/diffstory/cmd/diffstory"
+	"github.com/fwojciec/diffstory/mock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

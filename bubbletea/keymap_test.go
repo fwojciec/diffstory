@@ -5,7 +5,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/fwojciec/diffview/bubbletea"
+	"github.com/fwojciec/diffstory/bubbletea"
 	"github.com/stretchr/testify/assert"
 )
 

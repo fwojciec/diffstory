@@ -3,8 +3,8 @@ package lipgloss_test
 import (
 	"testing"
 
-	"github.com/fwojciec/diffview"
-	"github.com/fwojciec/diffview/lipgloss"
+	"github.com/fwojciec/diffstory"
+	"github.com/fwojciec/diffstory/lipgloss"
 	"github.com/stretchr/testify/assert"
 )
 

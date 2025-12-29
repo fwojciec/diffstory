@@ -2,7 +2,7 @@ package chroma
 
 import (
 	chromalib "github.com/alecthomas/chroma/v2"
-	"github.com/fwojciec/diffview"
+	"github.com/fwojciec/diffstory"
 )
 
 // StyleFromPalette returns a function that maps chroma token types to diffview styles

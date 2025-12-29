@@ -4,7 +4,7 @@ import (
 	"os/exec"
 	"testing"
 
-	"github.com/fwojciec/diffview/clipboard"
+	"github.com/fwojciec/diffstory/clipboard"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

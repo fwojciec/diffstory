@@ -7,8 +7,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/exp/teatest"
-	"github.com/fwojciec/diffview"
-	"github.com/fwojciec/diffview/bubbletea"
+	"github.com/fwojciec/diffstory"
+	"github.com/fwojciec/diffstory/bubbletea"
 	"github.com/stretchr/testify/assert"
 )
 

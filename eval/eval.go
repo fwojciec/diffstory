@@ -5,7 +5,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/fwojciec/diffview"
+	"github.com/fwojciec/diffstory"
 )
 
 // Eval provides assertion helpers for LLM-based test evaluation.

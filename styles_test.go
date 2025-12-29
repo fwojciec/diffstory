@@ -3,7 +3,7 @@ package diffview_test
 import (
 	"testing"
 
-	"github.com/fwojciec/diffview"
+	"github.com/fwojciec/diffstory"
 	"github.com/stretchr/testify/assert"
 )
 

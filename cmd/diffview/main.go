@@ -9,12 +9,12 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/fwojciec/diffview"
-	"github.com/fwojciec/diffview/bubbletea"
-	"github.com/fwojciec/diffview/chroma"
-	"github.com/fwojciec/diffview/gitdiff"
-	"github.com/fwojciec/diffview/lipgloss"
-	"github.com/fwojciec/diffview/worddiff"
+	"github.com/fwojciec/diffstory"
+	"github.com/fwojciec/diffstory/bubbletea"
+	"github.com/fwojciec/diffstory/chroma"
+	"github.com/fwojciec/diffstory/gitdiff"
+	"github.com/fwojciec/diffstory/lipgloss"
+	"github.com/fwojciec/diffstory/worddiff"
 )
 
 // ErrNoChanges is returned when the diff contains no changes to display.

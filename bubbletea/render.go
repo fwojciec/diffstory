@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/fwojciec/diffview"
+	"github.com/fwojciec/diffstory"
 )
 
 // hunkKey identifies a specific hunk within a diff.

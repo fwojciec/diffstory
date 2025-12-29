@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/fwojciec/diffview"
-	"github.com/fwojciec/diffview/fs"
-	"github.com/fwojciec/diffview/mock"
+	"github.com/fwojciec/diffstory"
+	"github.com/fwojciec/diffstory/fs"
+	"github.com/fwojciec/diffstory/mock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

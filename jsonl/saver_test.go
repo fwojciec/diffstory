@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/fwojciec/diffview"
-	"github.com/fwojciec/diffview/jsonl"
+	"github.com/fwojciec/diffstory"
+	"github.com/fwojciec/diffstory/jsonl"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

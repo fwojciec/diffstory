@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fwojciec/diffview/jsonl"
+	"github.com/fwojciec/diffstory/jsonl"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

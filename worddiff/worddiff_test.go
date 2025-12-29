@@ -3,8 +3,8 @@ package worddiff_test
 import (
 	"testing"
 
-	"github.com/fwojciec/diffview"
-	"github.com/fwojciec/diffview/worddiff"
+	"github.com/fwojciec/diffstory"
+	"github.com/fwojciec/diffstory/worddiff"
 	"github.com/stretchr/testify/assert"
 )
 

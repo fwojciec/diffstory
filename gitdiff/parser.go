@@ -5,7 +5,7 @@ import (
 	"io"
 
 	"github.com/bluekeyes/go-gitdiff/gitdiff"
-	"github.com/fwojciec/diffview"
+	"github.com/fwojciec/diffstory"
 )
 
 // Compile-time interface verification.

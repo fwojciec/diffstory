@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fwojciec/diffview"
-	main "github.com/fwojciec/diffview/cmd/diffview"
-	"github.com/fwojciec/diffview/mock"
+	"github.com/fwojciec/diffstory"
+	main "github.com/fwojciec/diffstory/cmd/diffview"
+	"github.com/fwojciec/diffstory/mock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

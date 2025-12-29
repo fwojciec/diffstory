@@ -7,7 +7,7 @@ A diff viewer designed for reviewing AI-generated code changes. Instead of line-
 ## Installation
 
 ```bash
-go install github.com/fwojciec/diffview/cmd/diffstory@latest
+go install github.com/fwojciec/diffstory/cmd/diffstory@latest
 ```
 
 ## Quick Start

@@ -4,9 +4,9 @@ import (
 	"testing"
 
 	chromalib "github.com/alecthomas/chroma/v2"
-	"github.com/fwojciec/diffview"
-	"github.com/fwojciec/diffview/chroma"
-	"github.com/fwojciec/diffview/lipgloss"
+	"github.com/fwojciec/diffstory"
+	"github.com/fwojciec/diffstory/chroma"
+	"github.com/fwojciec/diffstory/lipgloss"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

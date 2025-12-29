@@ -61,7 +61,7 @@ import (
     "strings"
 
     "github.com/charmbracelet/lipgloss"
-    "github.com/fwojciec/diffview"
+    "github.com/fwojciec/diffstory"
 )
 
 var _ diffview.Renderer = (*Renderer)(nil)

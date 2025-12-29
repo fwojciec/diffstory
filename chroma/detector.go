@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/alecthomas/chroma/v2/lexers"
-	"github.com/fwojciec/diffview"
+	"github.com/fwojciec/diffstory"
 )
 
 // Compile-time interface verification.

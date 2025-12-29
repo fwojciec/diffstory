@@ -11,10 +11,10 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/fwojciec/diffview"
-	"github.com/fwojciec/diffview/bubbletea"
-	"github.com/fwojciec/diffview/gitdiff"
-	"github.com/fwojciec/diffview/lipgloss"
+	"github.com/fwojciec/diffstory"
+	"github.com/fwojciec/diffstory/bubbletea"
+	"github.com/fwojciec/diffstory/gitdiff"
+	"github.com/fwojciec/diffstory/lipgloss"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

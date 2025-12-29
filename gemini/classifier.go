@@ -9,7 +9,7 @@ import (
 	"math/rand/v2"
 	"time"
 
-	"github.com/fwojciec/diffview"
+	"github.com/fwojciec/diffstory"
 )
 
 // Compile-time interface verification.

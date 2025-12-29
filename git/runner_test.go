@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fwojciec/diffview/git"
+	"github.com/fwojciec/diffstory/git"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

@@ -1,4 +1,4 @@
-module github.com/fwojciec/diffview
+module github.com/fwojciec/diffstory
 
 go 1.25.5
 
