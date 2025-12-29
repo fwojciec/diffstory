@@ -254,6 +254,7 @@ func run() error {
 		bubbletea.WithStoryLanguageDetector(detector),
 		bubbletea.WithStoryTokenizer(tokenizer),
 		bubbletea.WithStoryWordDiffer(worddiff.NewDiffer()),
+		bubbletea.WithIntroSlide(),
 	)
 	p := tea.NewProgram(m,
 		tea.WithAltScreen(),

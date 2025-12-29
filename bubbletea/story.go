@@ -23,7 +23,8 @@ type StoryModel struct {
 	collapsedHunks map[hunkKey]bool   // tracks runtime collapse state
 
 	// Section filtering
-	activeSection int // 0-based index of current section being viewed
+	activeSection int  // 0 = intro (if showIntro) or first code section
+	showIntro     bool // whether intro slide is enabled
 
 	// Syntax highlighting
 	languageDetector diffview.LanguageDetector
@@ -50,6 +51,7 @@ type storyModelConfig struct {
 	languageDetector diffview.LanguageDetector
 	tokenizer        diffview.Tokenizer
 	wordDiffer       diffview.WordDiffer
+	showIntro        bool
 }
 
 // WithStoryRenderer sets a custom lipgloss renderer for the model.
@@ -84,6 +86,14 @@ func WithStoryTokenizer(t diffview.Tokenizer) StoryModelOption {
 func WithStoryWordDiffer(d diffview.WordDiffer) StoryModelOption {
 	return func(cfg *storyModelConfig) {
 		cfg.wordDiffer = d
+	}
+}
+
+// WithIntroSlide enables the intro slide, starting the viewer at an overview
+// rather than jumping directly into code.
+func WithIntroSlide() StoryModelOption {
+	return func(cfg *storyModelConfig) {
+		cfg.showIntro = true
 	}
 }
 
@@ -134,6 +144,7 @@ func NewStoryModel(diff *diffview.Diff, story *diffview.StoryClassification, opt
 		hunkCategories:   hunkCategories,
 		collapseText:     collapseText,
 		collapsedHunks:   collapsedHunks,
+		showIntro:        cfg.showIntro,
 		languageDetector: cfg.languageDetector,
 		tokenizer:        cfg.tokenizer,
 		wordDiffer:       cfg.wordDiffer,
@@ -231,8 +242,37 @@ func (m StoryModel) View() string {
 	return lipgloss.JoinVertical(lipgloss.Left, m.viewport.View(), m.statusBarView())
 }
 
+// onIntro returns true if the viewer is on the intro slide.
+func (m StoryModel) onIntro() bool {
+	return m.showIntro && m.activeSection == 0
+}
+
+// codeSectionIndex returns the index into story.Sections for the current view.
+// Returns -1 if on the intro slide.
+func (m StoryModel) codeSectionIndex() int {
+	if m.showIntro {
+		return m.activeSection - 1
+	}
+	return m.activeSection
+}
+
+// totalSections returns the total number of navigable sections (including intro if enabled).
+func (m StoryModel) totalSections() int {
+	if m.story == nil {
+		return 0
+	}
+	total := len(m.story.Sections)
+	if m.showIntro {
+		total++
+	}
+	return total
+}
+
 // renderContent renders the diff content with story-aware configuration.
 func (m StoryModel) renderContent() string {
+	if m.onIntro() {
+		return m.renderIntro()
+	}
 	return renderDiff(renderConfig{
 		diff:             m.filteredDiff(),
 		styles:           m.styles,
@@ -247,18 +287,44 @@ func (m StoryModel) renderContent() string {
 	})
 }
 
+// renderIntro renders the intro slide content.
+func (m StoryModel) renderIntro() string {
+	var b strings.Builder
+
+	// Summary
+	if m.story != nil && m.story.Summary != "" {
+		b.WriteString("\n")
+		b.WriteString(m.story.Summary)
+		b.WriteString("\n")
+	}
+
+	// Section list
+	if m.story != nil && len(m.story.Sections) > 0 {
+		b.WriteString("\nSections:\n")
+		for i, section := range m.story.Sections {
+			fmt.Fprintf(&b, "  %d. %s\n", i+1, section.Title)
+		}
+	}
+
+	// Navigation hint
+	b.WriteString("\n\n[s] next section\n")
+
+	return b.String()
+}
+
 // filteredDiff returns a diff containing only hunks from the active section.
 // If there are no sections or the active section is invalid, returns the full diff.
 func (m StoryModel) filteredDiff() *diffview.Diff {
 	if m.diff == nil || m.story == nil || len(m.story.Sections) == 0 {
 		return m.diff
 	}
-	if m.activeSection < 0 || m.activeSection >= len(m.story.Sections) {
+	idx := m.codeSectionIndex()
+	if idx < 0 || idx >= len(m.story.Sections) {
 		return m.diff
 	}
 
 	// Build a set of hunks in the active section
-	section := m.story.Sections[m.activeSection]
+	section := m.story.Sections[idx]
 	activeHunks := make(map[hunkKey]bool, len(section.Hunks))
 	for _, ref := range section.Hunks {
 		activeHunks[hunkKey{file: ref.File, hunkIndex: ref.HunkIndex}] = true
@@ -296,8 +362,9 @@ func (m StoryModel) computePositions() (hunkPositions []int, hunkRefs []diffview
 	// Build map from hunkKey to HunkRef for O(1) lookup
 	// This handles the case where section's HunkRefs may not be in file order
 	refMap := make(map[hunkKey]diffview.HunkRef)
-	if m.story != nil && m.activeSection >= 0 && m.activeSection < len(m.story.Sections) {
-		for _, ref := range m.story.Sections[m.activeSection].Hunks {
+	idx := m.codeSectionIndex()
+	if m.story != nil && idx >= 0 && idx < len(m.story.Sections) {
+		for _, ref := range m.story.Sections[idx].Hunks {
 			refMap[hunkKey{file: ref.File, hunkIndex: ref.HunkIndex}] = ref
 		}
 	}
@@ -358,11 +425,12 @@ func (m StoryModel) computePositions() (hunkPositions []int, hunkRefs []diffview
 
 // gotoNextSection switches to the next section.
 func (m *StoryModel) gotoNextSection() {
-	if m.story == nil || len(m.story.Sections) == 0 {
+	total := m.totalSections()
+	if total == 0 {
 		return
 	}
 	// Move to next section if possible
-	if m.activeSection < len(m.story.Sections)-1 {
+	if m.activeSection < total-1 {
 		m.activeSection++
 		m.viewport.SetContent(m.renderContent())
 		m.viewport.GotoTop()
@@ -413,11 +481,12 @@ func (m *StoryModel) toggleAllCollapse() {
 	if m.story == nil || len(m.story.Sections) == 0 {
 		return
 	}
-	if m.activeSection < 0 || m.activeSection >= len(m.story.Sections) {
-		return
+	idx := m.codeSectionIndex()
+	if idx < 0 || idx >= len(m.story.Sections) {
+		return // On intro slide or invalid section
 	}
 
-	sectionHunks := m.story.Sections[m.activeSection].Hunks
+	sectionHunks := m.story.Sections[idx].Hunks
 	if len(sectionHunks) == 0 {
 		return
 	}
@@ -445,7 +514,8 @@ func (m *StoryModel) toggleAllCollapse() {
 
 // gotoPrevSection switches to the previous section.
 func (m *StoryModel) gotoPrevSection() {
-	if m.story == nil || len(m.story.Sections) == 0 {
+	total := m.totalSections()
+	if total == 0 {
 		return
 	}
 	// Move to previous section if possible
@@ -553,14 +623,20 @@ func (m StoryModel) scrollPosition() string {
 // currentSection returns the current section index (1-based), total count, and title.
 // Returns (0, 0, "") if there are no sections.
 func (m StoryModel) currentSection() (current, total int, title string) {
-	if m.story == nil || len(m.story.Sections) == 0 {
+	total = m.totalSections()
+	if total == 0 {
 		return 0, 0, ""
 	}
 
-	total = len(m.story.Sections)
 	current = m.activeSection + 1 // Convert 0-based to 1-based
-	if m.activeSection >= 0 && m.activeSection < len(m.story.Sections) {
-		title = m.story.Sections[m.activeSection].Title
+
+	if m.onIntro() {
+		title = "overview"
+	} else {
+		idx := m.codeSectionIndex()
+		if idx >= 0 && idx < len(m.story.Sections) {
+			title = m.story.Sections[idx].Title
+		}
 	}
 
 	return current, total, title

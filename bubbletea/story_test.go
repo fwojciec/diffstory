@@ -495,6 +495,175 @@ func TestStoryModel_SectionIndicator(t *testing.T) {
 	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
 }
 
+func TestStoryModel_IntroSlide_StartsAtIntro(t *testing.T) {
+	t.Parallel()
+
+	diff := &diffview.Diff{
+		Files: []diffview.FileDiff{
+			{
+				NewPath:   "b/file.go",
+				Operation: diffview.FileModified,
+				Hunks: []diffview.Hunk{
+					{
+						OldStart: 1, OldCount: 1, NewStart: 1, NewCount: 1,
+						Lines: []diffview.Line{
+							{Type: diffview.LineContext, Content: "CODE_CONTENT"},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	story := &diffview.StoryClassification{
+		Summary: "Test summary for intro slide",
+		Sections: []diffview.Section{
+			{
+				Role:  "core",
+				Title: "Core Changes",
+				Hunks: []diffview.HunkRef{
+					{File: "file.go", HunkIndex: 0, Category: "core"},
+				},
+			},
+		},
+	}
+
+	// With intro slide enabled, should start at intro (not code)
+	m := bubbletea.NewStoryModel(diff, story, bubbletea.WithIntroSlide())
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(80, 24),
+	)
+
+	// Should show intro slide content (summary and overview indicator)
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		hasOverview := bytes.Contains(out, []byte("overview"))
+		hasSummary := bytes.Contains(out, []byte("Test summary for intro slide"))
+		noCode := !bytes.Contains(out, []byte("CODE_CONTENT"))
+		return hasOverview && hasSummary && noCode
+	})
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}
+
+func TestStoryModel_WithoutIntroSlide_StartsAtCodeSection(t *testing.T) {
+	t.Parallel()
+
+	diff := &diffview.Diff{
+		Files: []diffview.FileDiff{
+			{
+				NewPath:   "b/file.go",
+				Operation: diffview.FileModified,
+				Hunks: []diffview.Hunk{
+					{
+						OldStart: 1, OldCount: 1, NewStart: 1, NewCount: 1,
+						Lines: []diffview.Line{
+							{Type: diffview.LineContext, Content: "CODE_CONTENT"},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	story := &diffview.StoryClassification{
+		Summary: "Test summary",
+		Sections: []diffview.Section{
+			{
+				Role:  "core",
+				Title: "Core Changes",
+				Hunks: []diffview.HunkRef{
+					{File: "file.go", HunkIndex: 0, Category: "core"},
+				},
+			},
+		},
+	}
+
+	// WITHOUT WithIntroSlide - should start at code section
+	m := bubbletea.NewStoryModel(diff, story)
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(80, 24),
+	)
+
+	// Should show code content and "section 1/1: Core Changes" (no intro)
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		hasCode := bytes.Contains(out, []byte("CODE_CONTENT"))
+		hasSection := bytes.Contains(out, []byte("section 1/1: Core Changes"))
+		noOverview := !bytes.Contains(out, []byte("overview"))
+		return hasCode && hasSection && noOverview
+	})
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}
+
+func TestStoryModel_IntroSlide_NavigationToCodeAndBack(t *testing.T) {
+	t.Parallel()
+
+	diff := &diffview.Diff{
+		Files: []diffview.FileDiff{
+			{
+				NewPath:   "b/file.go",
+				Operation: diffview.FileModified,
+				Hunks: []diffview.Hunk{
+					{
+						OldStart: 1, OldCount: 1, NewStart: 1, NewCount: 1,
+						Lines: []diffview.Line{
+							{Type: diffview.LineContext, Content: "CODE_CONTENT"},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	story := &diffview.StoryClassification{
+		Summary: "Test summary",
+		Sections: []diffview.Section{
+			{
+				Role:  "core",
+				Title: "Core Changes",
+				Hunks: []diffview.HunkRef{
+					{File: "file.go", HunkIndex: 0, Category: "core"},
+				},
+			},
+		},
+	}
+
+	m := bubbletea.NewStoryModel(diff, story, bubbletea.WithIntroSlide())
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(80, 24),
+	)
+
+	// Should start at intro with "section 1/2: overview"
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("section 1/2: overview"))
+	})
+
+	// Press 's' to advance to first code section
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+
+	// Should show code content and "section 2/2: Core Changes"
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		hasCode := bytes.Contains(out, []byte("CODE_CONTENT"))
+		hasSection := bytes.Contains(out, []byte("section 2/2: Core Changes"))
+		return hasCode && hasSection
+	})
+
+	// Press 'S' to go back to intro
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'S'}})
+
+	// Should be back at intro with "section 1/2: overview"
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		hasOverview := bytes.Contains(out, []byte("section 1/2: overview"))
+		noCode := !bytes.Contains(out, []byte("CODE_CONTENT"))
+		return hasOverview && noCode
+	})
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}
+
 func TestStoryModel_SectionFiltering(t *testing.T) {
 	t.Parallel()
 
