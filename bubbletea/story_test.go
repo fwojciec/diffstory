@@ -2,12 +2,16 @@ package bubbletea_test
 
 import (
 	"bytes"
+	"io"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/exp/teatest"
 	"github.com/fwojciec/diffview"
 	"github.com/fwojciec/diffview/bubbletea"
+	dv "github.com/fwojciec/diffview/lipgloss"
+	"github.com/muesli/termenv"
 )
 
 func TestStoryModel_BasicRendering(t *testing.T) {
@@ -749,6 +753,147 @@ func TestStoryModel_SectionFiltering(t *testing.T) {
 		noSection2Content := !bytes.Contains(out, []byte("SECTION_TWO_CONTENT"))
 		hasSection1Indicator := bytes.Contains(out, []byte("section 1/2"))
 		return hasSection1Content && noSection2Content && hasSection1Indicator
+	})
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}
+
+// storyTrueColorRenderer creates a lipgloss renderer that outputs true colors.
+func storyTrueColorRenderer() *lipgloss.Renderer {
+	r := lipgloss.NewRenderer(io.Discard)
+	r.SetColorProfile(termenv.TrueColor)
+	return r
+}
+
+// storyMockTokenizer implements diffview.Tokenizer for testing.
+type storyMockTokenizer struct {
+	TokenizeFn func(language, source string) []diffview.Token
+}
+
+func (m *storyMockTokenizer) Tokenize(language, source string) []diffview.Token {
+	return m.TokenizeFn(language, source)
+}
+
+// storyMockLanguageDetector implements diffview.LanguageDetector for testing.
+type storyMockLanguageDetector struct {
+	DetectFromPathFn func(path string) string
+}
+
+func (m *storyMockLanguageDetector) DetectFromPath(path string) string {
+	return m.DetectFromPathFn(path)
+}
+
+func TestStoryModel_ExpandedHunksGetFullStyling(t *testing.T) {
+	t.Parallel()
+
+	// Create a diff with Go code that will be syntax highlighted
+	diff := &diffview.Diff{
+		Files: []diffview.FileDiff{
+			{
+				OldPath:   "a/main.go",
+				NewPath:   "b/main.go",
+				Operation: diffview.FileModified,
+				Hunks: []diffview.Hunk{
+					{
+						OldStart: 1, OldCount: 1, NewStart: 1, NewCount: 2,
+						Lines: []diffview.Line{
+							{Type: diffview.LineContext, Content: "package main", OldLineNum: 1, NewLineNum: 1},
+							{Type: diffview.LineAdded, Content: "func main() {}", OldLineNum: 0, NewLineNum: 2},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	// Story with refactoring category (starts collapsed and dimmed)
+	story := &diffview.StoryClassification{
+		Sections: []diffview.Section{
+			{
+				Role:  "supporting",
+				Title: "Refactoring",
+				Hunks: []diffview.HunkRef{
+					{
+						File:         "main.go",
+						HunkIndex:    0,
+						Category:     "refactoring",
+						Collapsed:    true,
+						CollapseText: "COLLAPSED_SUMMARY",
+					},
+				},
+			},
+		},
+	}
+
+	// Use TestTheme with predictable colors:
+	// - Keyword: #ff00ff (magenta) -> "38;2;255;0;255"
+	// - Added background: 15% blend of #00ff00 into #000000 -> "48;2;0;38;0"
+	theme := dv.TestTheme()
+
+	// Mock tokenizer that returns magenta-colored keywords
+	tokenizer := &storyMockTokenizer{
+		TokenizeFn: func(language, source string) []diffview.Token {
+			if language != "Go" {
+				return nil
+			}
+			if source == "func main() {}" {
+				return []diffview.Token{
+					{Text: "func", Style: diffview.Style{Foreground: "#ff00ff", Bold: true}},
+					{Text: " ", Style: diffview.Style{}},
+					{Text: "main", Style: diffview.Style{Foreground: "#0000ff"}},
+					{Text: "()", Style: diffview.Style{}},
+					{Text: " {}", Style: diffview.Style{}},
+				}
+			}
+			return nil
+		},
+	}
+
+	// Mock detector that returns "Go" for .go files
+	detector := &storyMockLanguageDetector{
+		DetectFromPathFn: func(path string) string {
+			if len(path) >= 3 && path[len(path)-3:] == ".go" {
+				return "Go"
+			}
+			return ""
+		},
+	}
+
+	m := bubbletea.NewStoryModel(diff, story,
+		bubbletea.WithStoryTheme(theme),
+		bubbletea.WithStoryRenderer(storyTrueColorRenderer()),
+		bubbletea.WithStoryLanguageDetector(detector),
+		bubbletea.WithStoryTokenizer(tokenizer),
+	)
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(80, 24),
+	)
+
+	// Step 1: Verify collapsed state shows collapse text, not the code
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		hasCollapseText := bytes.Contains(out, []byte("COLLAPSED_SUMMARY"))
+		noCodeContent := !bytes.Contains(out, []byte("func main"))
+		return hasCollapseText && noCodeContent
+	})
+
+	// Step 2: Press 'o' to expand the hunk
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'o'}})
+
+	// Step 3: Verify expanded state has full styling
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		// Code content is now visible (tokens are styled separately, so check individually)
+		hasFuncKeyword := bytes.Contains(out, []byte("func"))
+		hasMainIdent := bytes.Contains(out, []byte("main"))
+
+		// Syntax highlighting: magenta keyword "func" -> RGB(255, 0, 255)
+		// May appear as "1;38;2;255;0;255" (bold+fg) or "38;2;255;0;255" (fg only)
+		hasSyntaxHighlighting := bytes.Contains(out, []byte("255;0;255"))
+
+		// Added line background: 15% green blend -> RGB(0, 38, 0) -> "48;2;0;38;0"
+		hasAddedBackground := bytes.Contains(out, []byte("48;2;0;38;0"))
+
+		return hasFuncKeyword && hasMainIdent && hasSyntaxHighlighting && hasAddedBackground
 	})
 
 	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
