@@ -29,22 +29,56 @@ import (
 // ErrNoChanges is returned when the diff contains no changes to analyze.
 var ErrNoChanges = errors.New("no changes to analyze")
 
+// ErrInvalidRange is returned when a commit range argument is malformed.
+var ErrInvalidRange = errors.New("invalid commit range: expected format like 'main...feature' or 'HEAD~3..HEAD'")
+
 // ErrOnBaseBranch is returned when running in branch mode while on the base branch.
 var ErrOnBaseBranch = errors.New("already on base branch, no changes to show")
+
+// ParseRange parses a git commit range specification into its components.
+// Supports both two-dot (A..B) and three-dot (A...B) notation.
+// Returns base ref, head ref, separator, and any error.
+func ParseRange(rangeSpec string) (base, head, sep string, err error) {
+	// Try three-dot first (must check before two-dot since "..." contains "..")
+	if idx := strings.Index(rangeSpec, "..."); idx != -1 {
+		base = rangeSpec[:idx]
+		head = rangeSpec[idx+3:]
+		sep = "..."
+	} else if idx := strings.Index(rangeSpec, ".."); idx != -1 {
+		base = rangeSpec[:idx]
+		head = rangeSpec[idx+2:]
+		sep = ".."
+	} else {
+		return "", "", "", ErrInvalidRange
+	}
+
+	if base == "" || head == "" {
+		return "", "", "", ErrInvalidRange
+	}
+
+	return base, head, sep, nil
+}
 
 // App encapsulates the application logic for testing.
 type App struct {
 	GitRunner  diffview.GitRunner       // Git runner for git operations
 	RepoPath   string                   // Repository path
 	BaseBranch string                   // Base branch (auto-detected if empty)
+	Range      string                   // Raw commit range (e.g., "main...feature"), overrides BaseBranch
 	Classifier diffview.StoryClassifier // Classifier for story generation
 }
 
 // Run parses the diff input and classifies it.
 // Returns the parsed diff and classification for TUI display.
 func (a *App) Run(ctx context.Context) (*diffview.Diff, *diffview.StoryClassification, error) {
-	// Get diff from git
-	diffStr, err := a.GitRunner.DiffRange(ctx, a.RepoPath, a.BaseBranch, "HEAD")
+	// Get diff from git - use raw Range if provided, otherwise use BaseBranch...HEAD
+	var diffStr string
+	var err error
+	if a.Range != "" {
+		diffStr, err = a.GitRunner.Diff(ctx, a.RepoPath, a.Range)
+	} else {
+		diffStr, err = a.GitRunner.DiffRange(ctx, a.RepoPath, a.BaseBranch, "HEAD")
+	}
 	if err != nil {
 		return nil, nil, err
 	}
@@ -144,14 +178,17 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintf(os.Stderr, `Usage: diffstory [command]
+	fmt.Fprintf(os.Stderr, `Usage: diffstory [range] [command]
 
 Commands:
   (default)              Analyze current branch diff with LLM classification
+  <range>                Analyze diff for specific commit range
   replay <file> [index]  Replay a saved eval case from JSONL file
 
 Examples:
-  diffstory                      # Analyze current branch
+  diffstory                      # Analyze current branch vs base
+  diffstory main...feature       # Analyze specific branch comparison
+  diffstory HEAD~3..HEAD         # Analyze last 3 commits
   diffstory replay cases.jsonl   # Replay first case
   diffstory replay cases.jsonl 2 # Replay third case (0-indexed)
 `)
@@ -161,7 +198,8 @@ func run() error {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	// Check for subcommand
+	// Check for subcommand or range argument
+	var rangeArg string
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
 		case "replay":
@@ -169,6 +207,13 @@ func run() error {
 		case "-h", "--help", "help":
 			usage()
 			return nil
+		default:
+			// Check if this looks like a commit range (contains "..")
+			if strings.Contains(os.Args[1], "..") {
+				rangeArg = os.Args[1]
+			} else {
+				return fmt.Errorf("unknown argument %q (use --help for usage)", os.Args[1])
+			}
 		}
 	}
 
@@ -185,19 +230,22 @@ func run() error {
 		return fmt.Errorf("failed to get current directory: %w", err)
 	}
 
-	// Auto-detect base branch from origin/HEAD
-	baseBranch, err := gitRunner.DefaultBranch(ctx, cwd)
-	if err != nil {
-		return fmt.Errorf("failed to detect base branch: %w", err)
-	}
+	var baseBranch, currentBranch string
+	if rangeArg == "" {
+		// Branch mode: auto-detect base branch from origin/HEAD
+		baseBranch, err = gitRunner.DefaultBranch(ctx, cwd)
+		if err != nil {
+			return fmt.Errorf("failed to detect base branch: %w", err)
+		}
 
-	// Check if we're on the base branch
-	currentBranch, err := gitRunner.CurrentBranch(ctx, cwd)
-	if err != nil {
-		return fmt.Errorf("failed to get current branch: %w", err)
-	}
-	if currentBranch == baseBranch {
-		return ErrOnBaseBranch
+		// Check if we're on the base branch
+		currentBranch, err = gitRunner.CurrentBranch(ctx, cwd)
+		if err != nil {
+			return fmt.Errorf("failed to get current branch: %w", err)
+		}
+		if currentBranch == baseBranch {
+			return ErrOnBaseBranch
+		}
 	}
 
 	// Set up Gemini client and classifier
@@ -215,6 +263,7 @@ func run() error {
 		GitRunner:  gitRunner,
 		RepoPath:   cwd,
 		BaseBranch: baseBranch,
+		Range:      rangeArg,
 		Classifier: classifier,
 	}
 
@@ -237,12 +286,25 @@ func run() error {
 	}
 
 	// Get commits for ClassificationInput
-	commits, _ := gitRunner.CommitsInRange(ctx, cwd, baseBranch, "HEAD")
+	var commits []diffview.CommitBrief
+	var branchName string
+	if rangeArg != "" {
+		// Range mode: parse range and get commits
+		base, head, _, parseErr := ParseRange(rangeArg)
+		if parseErr == nil {
+			commits, _ = gitRunner.CommitsInRange(ctx, cwd, base, head)
+		}
+		branchName = rangeArg // Use range as "branch" name for context
+	} else {
+		// Branch mode: use baseBranch...HEAD
+		commits, _ = gitRunner.CommitsInRange(ctx, cwd, baseBranch, "HEAD")
+		branchName = currentBranch
+	}
 
 	// Build ClassificationInput for case saving
 	classInput := diffview.ClassificationInput{
 		Repo:    filepath.Base(cwd),
-		Branch:  currentBranch,
+		Branch:  branchName,
 		Commits: commits,
 		Diff:    *diff,
 	}

@@ -172,3 +172,123 @@ index 0000000..e69de29
 	assert.Equal(t, "src/auth.go", capturedInput.Diff.Files[0].NewPath)
 	require.Len(t, capturedInput.Diff.Files[0].Hunks, 1)
 }
+
+func TestApp_Run_UsesRawRangeWhenProvided(t *testing.T) {
+	t.Parallel()
+
+	diffFromGit := `diff --git a/feature.go b/feature.go
+new file mode 100644
+--- /dev/null
++++ b/feature.go
+@@ -0,0 +1,3 @@
++package main
++
++func newFeature() {}
+`
+
+	var capturedRangeSpec string
+	app := &main.App{
+		GitRunner: &mock.GitRunner{
+			DiffFn: func(_ context.Context, repoPath, rangeSpec string) (string, error) {
+				capturedRangeSpec = rangeSpec
+				assert.Equal(t, "/repo", repoPath)
+				return diffFromGit, nil
+			},
+			// DiffRangeFn should NOT be called when Range is set
+			DiffRangeFn: func(_ context.Context, _, _, _ string) (string, error) {
+				t.Error("DiffRangeFn should not be called when Range is set")
+				return "", nil
+			},
+		},
+		RepoPath: "/repo",
+		Range:    "main...feature-branch", // Raw range specification
+		Classifier: &mock.StoryClassifier{
+			ClassifyFn: func(_ context.Context, _ diffview.ClassificationInput) (*diffview.StoryClassification, error) {
+				return &diffview.StoryClassification{ChangeType: "feature"}, nil
+			},
+		},
+	}
+
+	diff, classification, err := app.Run(context.Background())
+	require.NoError(t, err)
+	require.NotNil(t, diff)
+	require.NotNil(t, classification)
+
+	// Verify the raw range was passed directly to Diff
+	assert.Equal(t, "main...feature-branch", capturedRangeSpec)
+}
+
+func TestParseRange(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		input     string
+		wantBase  string
+		wantHead  string
+		wantSep   string
+		wantError bool
+	}{
+		{
+			name:     "three-dot notation",
+			input:    "main...feature",
+			wantBase: "main",
+			wantHead: "feature",
+			wantSep:  "...",
+		},
+		{
+			name:     "two-dot notation",
+			input:    "HEAD~3..HEAD",
+			wantBase: "HEAD~3",
+			wantHead: "HEAD",
+			wantSep:  "..",
+		},
+		{
+			name:     "origin prefix",
+			input:    "origin/main...feature-branch",
+			wantBase: "origin/main",
+			wantHead: "feature-branch",
+			wantSep:  "...",
+		},
+		{
+			name:     "commit hashes",
+			input:    "abc123..def456",
+			wantBase: "abc123",
+			wantHead: "def456",
+			wantSep:  "..",
+		},
+		{
+			name:      "no separator",
+			input:     "main",
+			wantError: true,
+		},
+		{
+			name:      "empty base",
+			input:     "...feature",
+			wantError: true,
+		},
+		{
+			name:      "empty head",
+			input:     "main...",
+			wantError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			base, head, sep, err := main.ParseRange(tt.input)
+
+			if tt.wantError {
+				assert.Error(t, err)
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantBase, base)
+			assert.Equal(t, tt.wantHead, head)
+			assert.Equal(t, tt.wantSep, sep)
+		})
+	}
+}

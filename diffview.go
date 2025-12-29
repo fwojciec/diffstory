@@ -114,6 +114,9 @@ type GitRunner interface {
 	// DiffRange returns the combined diff between base and head.
 	// Uses three-dot notation (base...head) to show changes introduced by head since common ancestor.
 	DiffRange(ctx context.Context, repoPath, base, head string) (string, error)
+	// Diff returns the diff for a raw range specification (e.g., "main...feature" or "HEAD~3..HEAD").
+	// The rangeSpec is passed directly to git diff, supporting both two-dot and three-dot notation.
+	Diff(ctx context.Context, repoPath, rangeSpec string) (string, error)
 	// CurrentBranch returns the name of the currently checked out branch.
 	CurrentBranch(ctx context.Context, repoPath string) (string, error)
 	// MergeBase returns the best common ancestor commit between two refs.
