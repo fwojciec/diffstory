@@ -22,6 +22,7 @@ type EvalKeyMap struct {
 	NextSection   key.Binding
 	PrevSection   key.Binding
 	ToggleMode    key.Binding
+	ToggleView    key.Binding // Tab: toggle story/data view
 	IncreaseSplit key.Binding
 	DecreaseSplit key.Binding
 
@@ -95,6 +96,10 @@ func DefaultEvalKeyMap() EvalKeyMap {
 		ToggleMode: key.NewBinding(
 			key.WithKeys("m"),
 			key.WithHelp("m", "toggle story/raw mode"),
+		),
+		ToggleView: key.NewBinding(
+			key.WithKeys("tab"),
+			key.WithHelp("tab", "toggle story/data view"),
 		),
 		IncreaseSplit: key.NewBinding(
 			key.WithKeys("+", "="),

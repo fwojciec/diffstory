@@ -843,9 +843,9 @@ func TestEvalModel_StoryModeIsDefaultWhenCaseHasStory(t *testing.T) {
 		teatest.WithInitialTermSize(100, 40),
 	)
 
-	// Story mode should show "story mode" in the status bar
+	// Story mode should show "[story]" in the status bar
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("story mode"))
+		return bytes.Contains(out, []byte("[story]"))
 	})
 
 	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
@@ -897,25 +897,28 @@ func TestEvalModel_ToggleModeWithM(t *testing.T) {
 		teatest.WithInitialTermSize(100, 40),
 	)
 
-	// Starts in story mode
+	// Starts in story mode (with section info)
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("story mode"))
+		return bytes.Contains(out, []byte("[story]")) &&
+			bytes.Contains(out, []byte("section 1/1"))
 	})
 
-	// Press 'm' to toggle to raw mode
+	// Press 'm' to toggle to raw mode (storyMode=false hides section info)
 	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'m'}})
 
-	// Should now show "raw mode"
+	// Should still show "[story]" view indicator, but no section info
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("raw mode"))
+		return bytes.Contains(out, []byte("[story]")) &&
+			!bytes.Contains(out, []byte("section 1/1"))
 	})
 
 	// Press 'm' again to toggle back to story mode
 	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'m'}})
 
-	// Should show "story mode" again
+	// Should show section info again
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("story mode"))
+		return bytes.Contains(out, []byte("[story]")) &&
+			bytes.Contains(out, []byte("section 1/1"))
 	})
 
 	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
@@ -1507,6 +1510,141 @@ func TestEvalModel_FilteredDiffUsesOriginalHunkIndices(t *testing.T) {
 	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
 }
 
+func TestEvalModel_TabTogglesViewMode(t *testing.T) {
+	t.Parallel()
+
+	// Tab should toggle between story view and data view
+	// Story view shows the split pane (metadata + diff)
+	// Data view shows the full classification tree
+
+	cases := []diffview.EvalCase{
+		{
+			Input: diffview.ClassificationInput{
+				Repo:    "test-repo",
+				Branch:  "test-branch",
+				Commits: []diffview.CommitBrief{{Hash: "abc123"}},
+				Diff: diffview.Diff{
+					Files: []diffview.FileDiff{
+						{
+							NewPath: "main.go",
+							Hunks: []diffview.Hunk{
+								{Lines: []diffview.Line{{Type: diffview.LineAdded, Content: "added code"}}},
+							},
+						},
+					},
+				},
+			},
+			Story: &diffview.StoryClassification{
+				ChangeType: "feature",
+				Narrative:  "core-periphery",
+				Summary:    "Added new feature",
+				Sections: []diffview.Section{
+					{
+						Role:        "core",
+						Title:       "Main Implementation",
+						Explanation: "The primary logic",
+						Hunks:       []diffview.HunkRef{{File: "main.go", HunkIndex: 0}},
+					},
+				},
+			},
+		},
+	}
+
+	m := bubbletea.NewEvalModel(cases)
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(100, 40),
+	)
+
+	// Should start in story view - footer shows [story]
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("[story]"))
+	})
+
+	// Press Tab to switch to data view
+	tm.Send(tea.KeyMsg{Type: tea.KeyTab})
+
+	// Should now show [data] in footer and the classification tree
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("[data]")) &&
+			bytes.Contains(out, []byte("change_type: feature"))
+	})
+
+	// Press Tab again to return to story view
+	tm.Send(tea.KeyMsg{Type: tea.KeyTab})
+
+	// Should show [story] again
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("[story]"))
+	})
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}
+
+func TestEvalModel_DataViewShowsFullClassificationTree(t *testing.T) {
+	t.Parallel()
+
+	// Data view should show the full classification tree (RenderDataView output)
+	// in a full-screen viewport
+
+	cases := []diffview.EvalCase{
+		{
+			Input: diffview.ClassificationInput{
+				Repo:    "test-repo",
+				Branch:  "test-branch",
+				Commits: []diffview.CommitBrief{{Hash: "abc123"}},
+				Diff: diffview.Diff{
+					Files: []diffview.FileDiff{
+						{
+							NewPath: "main.go",
+							Hunks: []diffview.Hunk{
+								{Lines: []diffview.Line{{Type: diffview.LineAdded, Content: "code"}}},
+							},
+						},
+					},
+				},
+			},
+			Story: &diffview.StoryClassification{
+				ChangeType: "bugfix",
+				Narrative:  "cause-effect",
+				Summary:    "Fixed the issue with null pointers",
+				Sections: []diffview.Section{
+					{
+						Role:        "problem",
+						Title:       "Root Cause",
+						Explanation: "The null check was missing",
+						Hunks:       []diffview.HunkRef{{File: "main.go", HunkIndex: 0, Category: "core"}},
+					},
+				},
+			},
+		},
+	}
+
+	m := bubbletea.NewEvalModel(cases)
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(100, 40),
+	)
+
+	// Wait for initial render
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("[story]"))
+	})
+
+	// Switch to data view
+	tm.Send(tea.KeyMsg{Type: tea.KeyTab})
+
+	// Should show classification tree elements
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("change_type: bugfix")) &&
+			bytes.Contains(out, []byte("narrative:   cause-effect")) &&
+			bytes.Contains(out, []byte("[problem]")) &&
+			bytes.Contains(out, []byte("Root Cause"))
+	})
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}
+
 func TestEvalModel_SplitResize(t *testing.T) {
 	t.Parallel()
 
@@ -1552,7 +1690,7 @@ func TestEvalModel_SplitResize(t *testing.T) {
 
 	// Wait for story mode to be active first
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("story mode"))
+		return bytes.Contains(out, []byte("[story]"))
 	})
 
 	// Press '+' to increase metadata pane (key just needs to not crash)
