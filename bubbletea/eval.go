@@ -24,6 +24,15 @@ const (
 	ModeHelp
 )
 
+// ViewMode identifies which view is active: story or data.
+type ViewMode int
+
+// ViewMode constants.
+const (
+	ViewStory ViewMode = iota
+	ViewData
+)
+
 // EvalModel is the Bubble Tea model for evaluating diff stories.
 type EvalModel struct {
 	// Data
@@ -37,8 +46,9 @@ type EvalModel struct {
 	critiqueTextarea textarea.Model
 
 	// State
-	mode  Mode
-	ready bool
+	mode     Mode
+	viewMode ViewMode // story or data view
+	ready    bool
 
 	// Story mode state
 	storyMode        bool               // true = section-by-section navigation, false = raw diff
@@ -246,6 +256,10 @@ func (m EvalModel) handleReviewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case key.Matches(msg, m.keymap.ToggleMode):
 		m.toggleStoryMode()
+		return m, nil
+
+	case key.Matches(msg, m.keymap.ToggleView):
+		m.toggleViewMode()
 		return m, nil
 
 	case key.Matches(msg, m.keymap.NextSection):
@@ -608,6 +622,16 @@ func (m *EvalModel) toggleStoryMode() {
 	m.updateViewportContent()
 }
 
+// toggleViewMode toggles between story view and data view.
+func (m *EvalModel) toggleViewMode() {
+	if m.viewMode == ViewStory {
+		m.viewMode = ViewData
+	} else {
+		m.viewMode = ViewStory
+	}
+	m.updateViewportContent()
+}
+
 // updateStoryModeForCase updates story mode based on the current case.
 // Enables story mode if the case has sections, disables if it doesn't.
 func (m *EvalModel) updateStoryModeForCase() {
@@ -897,6 +921,11 @@ func (m EvalModel) View() string {
 		return m.renderHelpView()
 	}
 
+	// Data view shows full-screen classification tree
+	if m.viewMode == ViewData {
+		return m.renderDataViewScreen()
+	}
+
 	var s strings.Builder
 
 	// Metadata panel (top) - section info in story mode, classification tree in raw mode
@@ -966,6 +995,7 @@ func (m EvalModel) renderHelpView() string {
 	// View
 	s.WriteString(headerStyle.Render("View"))
 	s.WriteString("\n")
+	s.WriteString(fmt.Sprintf("  %s  %s\n", keyStyle.Render("Tab"), descStyle.Render("toggle story/data view")))
 	s.WriteString(fmt.Sprintf("  %s  %s\n", keyStyle.Render("=/+/-"), descStyle.Render("resize split")))
 	s.WriteString(fmt.Sprintf("  %s    %s\n", keyStyle.Render("m"), descStyle.Render("toggle story/raw mode")))
 	s.WriteString(fmt.Sprintf("  %s  %s\n", keyStyle.Render("]/["), descStyle.Render("next/prev section (story mode)")))
@@ -988,6 +1018,39 @@ func (m EvalModel) renderHelpView() string {
 	s.WriteString("\n\n")
 
 	s.WriteString(descStyle.Render("Press any key to close"))
+
+	return s.String()
+}
+
+func (m EvalModel) renderDataViewScreen() string {
+	var s strings.Builder
+
+	// Header
+	header := lipgloss.NewStyle().Bold(true).Render("DATA")
+	s.WriteString(header)
+	s.WriteString("\n")
+
+	// Render classification tree using RenderDataView
+	if len(m.cases) > 0 {
+		c := m.cases[m.currentIndex]
+		s.WriteString(RenderDataView(c.Story, m.width))
+	} else {
+		s.WriteString("[No cases loaded]")
+	}
+
+	// Pad to fill screen height (reserve 3 lines: header, judgment bar, status bar)
+	content := s.String()
+	lines := strings.Count(content, "\n")
+	for i := lines; i < m.height-3; i++ {
+		s.WriteString("\n")
+	}
+
+	// Judgment bar
+	s.WriteString(m.renderJudgmentBar())
+	s.WriteString("\n")
+
+	// Status bar
+	s.WriteString(m.renderStatusBar())
 
 	return s.String()
 }
@@ -1098,25 +1161,36 @@ func (m EvalModel) renderStatusBar() string {
 	progress := fmt.Sprintf("%d/%d reviewed", judged, len(m.cases))
 	indicatorBar := strings.Join(indicators, " ")
 
-	// Mode and section indicator
+	// View mode indicator: [story] or [data]
+	viewIndicator := "[story]"
+	if m.viewMode == ViewData {
+		viewIndicator = "[data]"
+	}
+
+	// Mode and section indicator (for story view)
 	var modeInfo string
 	var sectionProgress string
-	if m.storyMode {
-		c := m.cases[m.currentIndex]
-		if c.Story != nil && len(c.Story.Sections) > 0 {
-			modeInfo = fmt.Sprintf("story mode │ section %d/%d", m.activeSection+1, len(c.Story.Sections))
-			sectionProgress = m.renderSectionProgress(c.Story.Sections)
-		} else {
-			modeInfo = "story mode"
+	if m.viewMode == ViewStory {
+		if m.storyMode {
+			c := m.cases[m.currentIndex]
+			if c.Story != nil && len(c.Story.Sections) > 0 {
+				modeInfo = fmt.Sprintf("section %d/%d", m.activeSection+1, len(c.Story.Sections))
+				sectionProgress = m.renderSectionProgress(c.Story.Sections)
+			}
 		}
-	} else {
-		modeInfo = "raw mode"
 	}
 
-	help := "[p]ass [f]ail [c]ritique [y]ank n/N case ]/[ section [?]help [q]uit"
+	help := "[p]ass [f]ail [c]ritique [y]ank n/N case Tab view [?]help [q]uit"
 
+	var parts []string
+	parts = append(parts, viewIndicator)
+	if modeInfo != "" {
+		parts = append(parts, modeInfo)
+	}
 	if sectionProgress != "" {
-		return fmt.Sprintf("%s │ %s │ %s │ %s │ %s │ %s", modeInfo, sectionProgress, caseInfo, progress, indicatorBar, help)
+		parts = append(parts, sectionProgress)
 	}
-	return fmt.Sprintf("%s │ %s │ %s │ %s │ %s", modeInfo, caseInfo, progress, indicatorBar, help)
+	parts = append(parts, caseInfo, progress, indicatorBar, help)
+
+	return strings.Join(parts, " │ ")
 }
