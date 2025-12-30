@@ -446,3 +446,65 @@ func TestDefaultFormatter_Format_NoPerCommitDiffs(t *testing.T) {
 	// Should NOT have commit-diffs section
 	assert.NotContains(t, result, "<commit-diffs>")
 }
+
+func TestDefaultFormatter_Format_PartialPerCommitDiffs(t *testing.T) {
+	t.Parallel()
+
+	input := diffview.ClassificationInput{
+		Repo: "testrepo",
+		Commits: []diffview.CommitBrief{
+			{
+				Hash:    "abc123",
+				Message: "Add feature",
+				Diff: &diffview.Diff{
+					Files: []diffview.FileDiff{
+						{
+							NewPath:   "feature.go",
+							Operation: diffview.FileAdded,
+							Hunks: []diffview.Hunk{
+								{Lines: []diffview.Line{
+									{Type: diffview.LineAdded, Content: "package main\n"},
+								}},
+							},
+						},
+					},
+				},
+			},
+			{Hash: "def456", Message: "Fixup commit"}, // No Diff field
+			{
+				Hash:    "ghi789",
+				Message: "Add more",
+				Diff: &diffview.Diff{
+					Files: []diffview.FileDiff{
+						{
+							NewPath:   "more.go",
+							Operation: diffview.FileAdded,
+							Hunks: []diffview.Hunk{
+								{Lines: []diffview.Line{
+									{Type: diffview.LineAdded, Content: "package main\n"},
+								}},
+							},
+						},
+					},
+				},
+			},
+		},
+		Diff: diffview.Diff{
+			Files: []diffview.FileDiff{
+				{NewPath: "feature.go", Operation: diffview.FileAdded, Hunks: []diffview.Hunk{}},
+			},
+		},
+	}
+
+	formatter := &diffview.DefaultFormatter{}
+	result := formatter.Format(input)
+
+	// Should have commit-diffs section (some commits have diffs)
+	assert.Contains(t, result, "<commit-diffs>")
+	// Should include commits with diffs
+	assert.Contains(t, result, "=== COMMIT 1 [abc123]: Add feature ===")
+	assert.Contains(t, result, "=== COMMIT 3 [ghi789]: Add more ===")
+	// Should NOT include commit without diff
+	assert.NotContains(t, result, "COMMIT 2 [def456]")
+	assert.Contains(t, result, "</commit-diffs>")
+}

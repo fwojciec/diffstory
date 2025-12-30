@@ -129,24 +129,9 @@ func hasPerCommitDiffs(commits []CommitBrief) bool {
 // This provides commit-level context without duplicating the full diff content.
 func formatDiffSummary(sb *strings.Builder, diff *Diff) {
 	for _, file := range diff.Files {
-		adds, dels := countChanges(file)
+		adds, dels := file.Stats()
 		fmt.Fprintf(sb, "  %s (%s): +%d/-%d\n",
 			filePath(file), operationName(file.Operation), adds, dels)
 	}
 	sb.WriteString("\n")
-}
-
-// countChanges counts added and deleted lines in a file diff.
-func countChanges(file FileDiff) (adds, dels int) {
-	for _, hunk := range file.Hunks {
-		for _, line := range hunk.Lines {
-			switch line.Type {
-			case LineAdded:
-				adds++
-			case LineDeleted:
-				dels++
-			}
-		}
-	}
-	return adds, dels
 }
