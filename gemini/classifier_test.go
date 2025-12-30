@@ -190,8 +190,8 @@ func TestBuildClassificationConfig_SetsThinkingLevel(t *testing.T) {
 
 	config := gemini.BuildClassificationConfig()
 
-	// MEDIUM provides balanced reasoning for code classification
-	assert.Equal(t, "MEDIUM", config.ThinkingLevel)
+	// No thinking - fastest classification for evals
+	assert.Empty(t, config.ThinkingLevel)
 }
 
 func TestBuildClassificationConfig_SetsSystemInstruction(t *testing.T) {
