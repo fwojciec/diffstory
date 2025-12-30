@@ -1585,7 +1585,7 @@ func TestEvalModel_DataViewShowsFullClassificationTree(t *testing.T) {
 	t.Parallel()
 
 	// Data view should show the full classification tree (RenderDataView output)
-	// in a full-screen viewport
+	// within the full-screen terminal
 
 	cases := []diffview.EvalCase{
 		{
