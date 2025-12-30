@@ -182,6 +182,20 @@ func (c *Collector) runPRLevel(ctx context.Context, mergeHashes []string) error 
 			return err
 		}
 
+		// Populate per-commit diffs
+		for i := range commits {
+			commitDiffText, err := c.Git.Show(ctx, c.RepoPath, commits[i].Hash)
+			if err != nil {
+				// Per-commit diffs are optional; continue if one fails
+				continue
+			}
+			commitDiff, err := parser.Parse(strings.NewReader(commitDiffText))
+			if err != nil {
+				continue
+			}
+			commits[i].Diff = commitDiff
+		}
+
 		// Get combined diff for the PR
 		diffText, err := c.Git.DiffRange(ctx, c.RepoPath, base, head)
 		if err != nil {
