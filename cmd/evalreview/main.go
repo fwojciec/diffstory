@@ -148,6 +148,7 @@ type Collector struct {
 	Limit    int
 	MinLines int
 	MaxLines int
+	MaxBytes int // Maximum serialized case size in bytes (0 = no limit)
 	Git      diffview.GitRunner
 }
 
@@ -228,6 +229,18 @@ func (c *Collector) runPRLevel(ctx context.Context, mergeHashes []string) error 
 			},
 			Story: nil,
 		}
+
+		// Check byte size limit before writing
+		if c.MaxBytes > 0 {
+			data, err := json.Marshal(evalCase)
+			if err != nil {
+				return err
+			}
+			if len(data) > c.MaxBytes {
+				continue
+			}
+		}
+
 		if err := encoder.Encode(evalCase); err != nil {
 			return err
 		}
@@ -289,6 +302,18 @@ func (c *Collector) runCommitLevel(ctx context.Context) error {
 			},
 			Story: nil, // Not classified yet
 		}
+
+		// Check byte size limit before writing
+		if c.MaxBytes > 0 {
+			data, err := json.Marshal(evalCase)
+			if err != nil {
+				return err
+			}
+			if len(data) > c.MaxBytes {
+				continue
+			}
+		}
+
 		if err := encoder.Encode(evalCase); err != nil {
 			return err
 		}
@@ -340,6 +365,7 @@ func runCollect(ctx context.Context) error {
 	repo := fs.String("repo", "", "Repository name (defaults to directory name)")
 	minLines := fs.Int("min-lines", 5, "Minimum lines changed (skip smaller commits)")
 	maxLines := fs.Int("max-lines", 2000, "Maximum lines changed (skip larger PRs/commits)")
+	maxBytes := fs.Int("max-bytes", 500000, "Maximum serialized case size in bytes (skip larger cases)")
 
 	if err := fs.Parse(os.Args[2:]); err != nil {
 		return err
@@ -368,6 +394,7 @@ func runCollect(ctx context.Context) error {
 		Limit:    *limit,
 		MinLines: *minLines,
 		MaxLines: *maxLines,
+		MaxBytes: *maxBytes,
 		Git:      git.NewRunner(),
 	}
 
