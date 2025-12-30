@@ -190,65 +190,6 @@ func TestEvalModel_NavigationBetweenCases(t *testing.T) {
 	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
 }
 
-func TestEvalModel_PanelSwitchingWithTab(t *testing.T) {
-	t.Parallel()
-
-	cases := []diffview.EvalCase{
-		{
-			Input: diffview.ClassificationInput{
-				Repo:    "test-repo",
-				Branch:  "test-branch",
-				Commits: []diffview.CommitBrief{{Hash: "abc123"}},
-				Diff: diffview.Diff{
-					Files: []diffview.FileDiff{
-						{
-							NewPath: "test.go",
-							Hunks: []diffview.Hunk{
-								{
-									Lines: []diffview.Line{
-										{Type: diffview.LineContext, Content: "diff content here"},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			Story: &diffview.StoryClassification{
-				Summary: "Story content here",
-			},
-		},
-	}
-
-	m := bubbletea.NewEvalModel(cases)
-	tm := teatest.NewTestModel(t, m,
-		teatest.WithInitialTermSize(80, 40),
-	)
-
-	// Wait for initial content - diff panel is active by default
-	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("DIFF [active]"))
-	})
-
-	// Toggle to story panel with Tab
-	tm.Send(tea.KeyMsg{Type: tea.KeyTab})
-
-	// Should show STORY as active
-	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("STORY [active]"))
-	})
-
-	// Toggle back to diff panel with Tab
-	tm.Send(tea.KeyMsg{Type: tea.KeyTab})
-
-	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("DIFF [active]"))
-	})
-
-	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
-	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
-}
-
 func TestEvalModel_PassJudgment(t *testing.T) {
 	t.Parallel()
 
@@ -745,7 +686,7 @@ func (m *mockClipboard) Content() string {
 	return m.content
 }
 
-func TestEvalModel_JKScrollsActivePanel(t *testing.T) {
+func TestEvalModel_JKScrollsDiffViewport(t *testing.T) {
 	t.Parallel()
 
 	// Create a case with content that spans multiple lines
@@ -854,86 +795,6 @@ func TestEvalModel_HelpOverlayShowsOnQuestionMark(t *testing.T) {
 
 	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
 	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
-}
-
-func TestEvalModel_SaveCaseToEvalDataset(t *testing.T) {
-	t.Parallel()
-
-	cases := []diffview.EvalCase{
-		{
-			Input: diffview.ClassificationInput{
-				Repo:    "test-repo",
-				Branch:  "feature-branch",
-				Commits: []diffview.CommitBrief{{Hash: "abc123", Message: "Add feature"}},
-			},
-			Story: &diffview.StoryClassification{
-				ChangeType: "feature",
-				Summary:    "Added a new feature",
-			},
-		},
-	}
-
-	// Create a mock saver to capture the saved case
-	mockSaver := &mockCaseSaver{}
-	m := bubbletea.NewEvalModel(cases,
-		bubbletea.WithCaseSaver(mockSaver, "/tmp/eval-cases.jsonl"),
-	)
-	tm := teatest.NewTestModel(t, m,
-		teatest.WithInitialTermSize(100, 40),
-	)
-
-	// Wait for model to be ready
-	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("Added a new feature"))
-	})
-
-	// Press 'e' to save case to eval dataset
-	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
-
-	// Wait for the save to happen
-	teatest.WaitFor(t, tm.Output(), func(_ []byte) bool {
-		return mockSaver.SavedCase() != nil
-	})
-
-	// Verify the saved case
-	saved := mockSaver.SavedCase()
-	assert.NotNil(t, saved)
-	assert.Equal(t, "test-repo", saved.Input.Repo)
-	assert.Equal(t, "feature-branch", saved.Input.Branch)
-	assert.Equal(t, "feature", saved.Story.ChangeType)
-
-	// Verify the path was passed correctly
-	assert.Equal(t, "/tmp/eval-cases.jsonl", mockSaver.SavedPath())
-
-	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
-	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
-}
-
-// mockCaseSaver captures saved cases for testing.
-type mockCaseSaver struct {
-	mu        sync.Mutex
-	savedCase *diffview.EvalCase
-	savedPath string
-}
-
-func (m *mockCaseSaver) Save(path string, c diffview.EvalCase) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.savedCase = &c
-	m.savedPath = path
-	return nil
-}
-
-func (m *mockCaseSaver) SavedCase() *diffview.EvalCase {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.savedCase
-}
-
-func (m *mockCaseSaver) SavedPath() string {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.savedPath
 }
 
 func TestEvalModel_StoryModeIsDefaultWhenCaseHasStory(t *testing.T) {
@@ -1264,69 +1125,6 @@ func TestEvalModel_CaseNavigationResetsStoryModeState(t *testing.T) {
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
 		return bytes.Contains(out, []byte("section 1/2")) &&
 			bytes.Contains(out, []byte("Case1-S1"))
-	})
-
-	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
-	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
-}
-
-func TestEvalModel_ToggleCollapsedHunksWithZ(t *testing.T) {
-	t.Parallel()
-
-	// Create a case with a collapsed hunk (noise category)
-	cases := []diffview.EvalCase{
-		{
-			Input: diffview.ClassificationInput{
-				Repo:    "test-repo",
-				Branch:  "test-branch",
-				Commits: []diffview.CommitBrief{{Hash: "abc123"}},
-				Diff: diffview.Diff{
-					Files: []diffview.FileDiff{
-						{
-							NewPath: "main.go",
-							Hunks: []diffview.Hunk{
-								{Lines: []diffview.Line{{Type: diffview.LineAdded, Content: "COLLAPSED_CONTENT"}}},
-							},
-						},
-					},
-				},
-			},
-			Story: &diffview.StoryClassification{
-				ChangeType: "feature",
-				Summary:    "Test feature",
-				Sections: []diffview.Section{
-					{
-						Role:  "noise",
-						Title: "Noise section",
-						Hunks: []diffview.HunkRef{{File: "main.go", HunkIndex: 0, Category: "noise", Collapsed: true, CollapseText: "collapsed noise hunk"}},
-					},
-				},
-			},
-		},
-	}
-
-	m := bubbletea.NewEvalModel(cases)
-	tm := teatest.NewTestModel(t, m,
-		teatest.WithInitialTermSize(100, 40),
-	)
-
-	// Initially collapsed - should show collapse text, not full content
-	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("collapsed noise hunk"))
-	})
-
-	// Press 'z' to toggle - should now show full content
-	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'z'}})
-
-	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("COLLAPSED_CONTENT"))
-	})
-
-	// Press 'z' again to collapse back
-	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'z'}})
-
-	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("collapsed noise hunk"))
 	})
 
 	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})

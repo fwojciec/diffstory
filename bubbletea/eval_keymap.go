@@ -10,9 +10,6 @@ type EvalKeyMap struct {
 	NextUnjudged key.Binding
 	PrevUnjudged key.Binding
 
-	// Panel switching
-	TogglePanel key.Binding
-
 	// Scrolling
 	ScrollDown   key.Binding
 	ScrollUp     key.Binding
@@ -26,10 +23,9 @@ type EvalKeyMap struct {
 	PrevHunk key.Binding
 
 	// Story mode navigation
-	NextSection    key.Binding
-	PrevSection    key.Binding
-	ToggleMode     key.Binding
-	ToggleCollapse key.Binding
+	NextSection key.Binding
+	PrevSection key.Binding
+	ToggleMode  key.Binding
 
 	// Judgment
 	Pass     key.Binding
@@ -41,7 +37,6 @@ type EvalKeyMap struct {
 
 	// Export
 	CopyCase key.Binding
-	SaveCase key.Binding
 
 	// General
 	Quit key.Binding
@@ -66,10 +61,6 @@ func DefaultEvalKeyMap() EvalKeyMap {
 		PrevUnjudged: key.NewBinding(
 			key.WithKeys("U"),
 			key.WithHelp("U", "previous unjudged"),
-		),
-		TogglePanel: key.NewBinding(
-			key.WithKeys("tab"),
-			key.WithHelp("Tab", "toggle panel"),
 		),
 		ScrollDown: key.NewBinding(
 			key.WithKeys("j", "down"),
@@ -115,10 +106,6 @@ func DefaultEvalKeyMap() EvalKeyMap {
 			key.WithKeys("m"),
 			key.WithHelp("m", "toggle story/raw mode"),
 		),
-		ToggleCollapse: key.NewBinding(
-			key.WithKeys("z"),
-			key.WithHelp("z", "toggle collapsed hunks"),
-		),
 		Pass: key.NewBinding(
 			key.WithKeys("p"),
 			key.WithHelp("p", "mark pass"),
@@ -138,10 +125,6 @@ func DefaultEvalKeyMap() EvalKeyMap {
 		CopyCase: key.NewBinding(
 			key.WithKeys("y"),
 			key.WithHelp("y", "copy case to clipboard"),
-		),
-		SaveCase: key.NewBinding(
-			key.WithKeys("e"),
-			key.WithHelp("e", "save case to eval dataset"),
 		),
 		Quit: key.NewBinding(
 			key.WithKeys("q", "ctrl+c"),

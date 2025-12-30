@@ -14,15 +14,6 @@ import (
 	"github.com/fwojciec/diffstory"
 )
 
-// Panel identifies which panel is active.
-type Panel int
-
-// Panel constants.
-const (
-	PanelDiff Panel = iota
-	PanelStory
-)
-
 // Mode identifies the current interaction mode.
 type Mode int
 
@@ -46,18 +37,16 @@ type EvalModel struct {
 	critiqueTextarea textarea.Model
 
 	// State
-	activePanel Panel
-	mode        Mode
-	ready       bool
+	mode  Mode
+	ready bool
 
 	// Story mode state
-	storyMode         bool               // true = section-by-section navigation, false = raw diff
-	activeSection     int                // current section index (0-based)
-	reviewedSections  map[int]bool       // sections marked as reviewed for current case
-	collapsedHunks    map[hunkKey]bool   // hunk collapse state
-	llmCollapsedHunks map[hunkKey]bool   // original LLM collapse decisions
-	hunkCategories    map[hunkKey]string // hunk → category for styling
-	collapseText      map[hunkKey]string // hunk → collapse text
+	storyMode        bool               // true = section-by-section navigation, false = raw diff
+	activeSection    int                // current section index (0-based)
+	reviewedSections map[int]bool       // sections marked as reviewed for current case
+	collapsedHunks   map[hunkKey]bool   // hunk collapse state
+	hunkCategories   map[hunkKey]string // hunk → category for styling
+	collapseText     map[hunkKey]string // hunk → collapse text
 
 	// Rendering
 	width, height    int
@@ -72,10 +61,6 @@ type EvalModel struct {
 
 	// Clipboard
 	clipboard diffview.Clipboard
-
-	// Case saving
-	caseSaver     diffview.EvalCaseSaver
-	caseSaverPath string
 
 	// Keybindings
 	keymap EvalKeyMap
@@ -137,28 +122,18 @@ func WithClipboard(c diffview.Clipboard) EvalModelOption {
 	}
 }
 
-// WithCaseSaver sets the saver for exporting cases to an eval dataset.
-func WithCaseSaver(s diffview.EvalCaseSaver, path string) EvalModelOption {
-	return func(m *EvalModel) {
-		m.caseSaver = s
-		m.caseSaverPath = path
-	}
-}
-
 // NewEvalModel creates a new EvalModel with the given cases.
 func NewEvalModel(cases []diffview.EvalCase, opts ...EvalModelOption) EvalModel {
 	m := EvalModel{
-		cases:             cases,
-		judgments:         make(map[string]*diffview.Judgment),
-		activePanel:       PanelDiff,
-		mode:              ModeReview,
-		keymap:            DefaultEvalKeyMap(),
-		styles:            defaultStyles(), // Use same defaults as viewer
-		reviewedSections:  make(map[int]bool),
-		collapsedHunks:    make(map[hunkKey]bool),
-		llmCollapsedHunks: make(map[hunkKey]bool),
-		hunkCategories:    make(map[hunkKey]string),
-		collapseText:      make(map[hunkKey]string),
+		cases:            cases,
+		judgments:        make(map[string]*diffview.Judgment),
+		mode:             ModeReview,
+		keymap:           DefaultEvalKeyMap(),
+		styles:           defaultStyles(), // Use same defaults as viewer
+		reviewedSections: make(map[int]bool),
+		collapsedHunks:   make(map[hunkKey]bool),
+		hunkCategories:   make(map[hunkKey]string),
+		collapseText:     make(map[hunkKey]string),
 	}
 
 	for _, opt := range opts {
@@ -196,13 +171,9 @@ func (m EvalModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleWindowSize(msg)
 	}
 
-	// Update the active viewport
+	// Update the diff viewport
 	var cmd tea.Cmd
-	if m.activePanel == PanelDiff {
-		m.diffViewport, cmd = m.diffViewport.Update(msg)
-	} else {
-		m.storyViewport, cmd = m.storyViewport.Update(msg)
-	}
+	m.diffViewport, cmd = m.diffViewport.Update(msg)
 	return m, cmd
 }
 
@@ -247,60 +218,28 @@ func (m EvalModel) handleReviewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case key.Matches(msg, m.keymap.TogglePanel):
-		if m.activePanel == PanelDiff {
-			m.activePanel = PanelStory
-		} else {
-			m.activePanel = PanelDiff
-		}
-		return m, nil
-
 	case key.Matches(msg, m.keymap.ScrollDown):
-		if m.activePanel == PanelDiff {
-			m.diffViewport.ScrollDown(1)
-		} else {
-			m.storyViewport.ScrollDown(1)
-		}
+		m.diffViewport.ScrollDown(1)
 		return m, nil
 
 	case key.Matches(msg, m.keymap.ScrollUp):
-		if m.activePanel == PanelDiff {
-			m.diffViewport.ScrollUp(1)
-		} else {
-			m.storyViewport.ScrollUp(1)
-		}
+		m.diffViewport.ScrollUp(1)
 		return m, nil
 
 	case key.Matches(msg, m.keymap.HalfPageUp):
-		if m.activePanel == PanelDiff {
-			m.diffViewport.HalfPageUp()
-		} else {
-			m.storyViewport.HalfPageUp()
-		}
+		m.diffViewport.HalfPageUp()
 		return m, nil
 
 	case key.Matches(msg, m.keymap.HalfPageDown):
-		if m.activePanel == PanelDiff {
-			m.diffViewport.HalfPageDown()
-		} else {
-			m.storyViewport.HalfPageDown()
-		}
+		m.diffViewport.HalfPageDown()
 		return m, nil
 
 	case key.Matches(msg, m.keymap.GotoTop):
-		if m.activePanel == PanelDiff {
-			m.diffViewport.GotoTop()
-		} else {
-			m.storyViewport.GotoTop()
-		}
+		m.diffViewport.GotoTop()
 		return m, nil
 
 	case key.Matches(msg, m.keymap.GotoBottom):
-		if m.activePanel == PanelDiff {
-			m.diffViewport.GotoBottom()
-		} else {
-			m.storyViewport.GotoBottom()
-		}
+		m.diffViewport.GotoBottom()
 		return m, nil
 
 	case key.Matches(msg, m.keymap.ToggleMode):
@@ -319,12 +258,6 @@ func (m EvalModel) handleReviewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case key.Matches(msg, m.keymap.ToggleCollapse):
-		if m.storyMode {
-			m.toggleCollapsedHunks()
-		}
-		return m, nil
-
 	case key.Matches(msg, m.keymap.Pass):
 		m.recordJudgment(true)
 		return m, nil
@@ -338,10 +271,6 @@ func (m EvalModel) handleReviewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case key.Matches(msg, m.keymap.CopyCase):
 		m.copyCurrentCase()
-		return m, nil
-
-	case key.Matches(msg, m.keymap.SaveCase):
-		m.saveCurrentCase()
 		return m, nil
 
 	case key.Matches(msg, m.keymap.Help):
@@ -614,22 +543,11 @@ func (m *EvalModel) copyCurrentCase() {
 	_ = m.clipboard.Copy(content)
 }
 
-func (m *EvalModel) saveCurrentCase() {
-	if m.caseSaver == nil || m.caseSaverPath == "" || len(m.cases) == 0 {
-		return
-	}
-
-	c := m.cases[m.currentIndex]
-	// Best-effort save - errors are silently ignored in UI
-	_ = m.caseSaver.Save(m.caseSaverPath, c)
-}
-
 // rebuildStoryMaps rebuilds the hunk maps from the current case's story.
 // Call this when switching cases or when story mode is enabled.
 func (m *EvalModel) rebuildStoryMaps() {
 	// Clear existing maps
 	m.collapsedHunks = make(map[hunkKey]bool)
-	m.llmCollapsedHunks = make(map[hunkKey]bool)
 	m.hunkCategories = make(map[hunkKey]string)
 	m.collapseText = make(map[hunkKey]string)
 	m.reviewedSections = make(map[int]bool)
@@ -655,7 +573,6 @@ func (m *EvalModel) rebuildStoryMaps() {
 			// Collapse if explicitly marked or noise category
 			if ref.Collapsed || ref.Category == "noise" {
 				m.collapsedHunks[key] = true
-				m.llmCollapsedHunks[key] = true
 			}
 		}
 	}
@@ -759,54 +676,6 @@ func (m *EvalModel) renderSectionProgress(sections []diffview.Section) string {
 		}
 	}
 	return strings.Join(indicators, " ")
-}
-
-// toggleCollapsedHunks toggles LLM-collapsed hunks in the current section.
-// Only hunks that were originally marked as collapsed by the LLM are affected.
-func (m *EvalModel) toggleCollapsedHunks() {
-	if len(m.cases) == 0 {
-		return
-	}
-
-	c := m.cases[m.currentIndex]
-	if c.Story == nil || len(c.Story.Sections) == 0 {
-		return
-	}
-
-	// Get hunks in current section
-	if m.activeSection < 0 || m.activeSection >= len(c.Story.Sections) {
-		return
-	}
-	sectionHunks := c.Story.Sections[m.activeSection].Hunks
-
-	// Only consider hunks that were originally collapsed by LLM
-	var llmCollapsedKeys []hunkKey
-	for _, ref := range sectionHunks {
-		key := hunkKey{file: ref.File, hunkIndex: ref.HunkIndex}
-		if m.llmCollapsedHunks[key] {
-			llmCollapsedKeys = append(llmCollapsedKeys, key)
-		}
-	}
-
-	if len(llmCollapsedKeys) == 0 {
-		return // No LLM-collapsed hunks to toggle
-	}
-
-	// Count how many are currently collapsed
-	collapsedCount := 0
-	for _, key := range llmCollapsedKeys {
-		if m.collapsedHunks[key] {
-			collapsedCount++
-		}
-	}
-
-	// If more than half are collapsed, expand all; otherwise collapse all
-	newState := collapsedCount <= len(llmCollapsedKeys)/2
-	for _, key := range llmCollapsedKeys {
-		m.collapsedHunks[key] = newState
-	}
-
-	m.updateViewportContent()
 }
 
 // filteredDiffWithIndices returns a diff containing only hunks from the active section,
@@ -989,15 +858,13 @@ func (m EvalModel) View() string {
 	var s strings.Builder
 
 	// Diff panel header
-	diffHeader := m.renderPanelHeader("DIFF", m.activePanel == PanelDiff)
-	s.WriteString(diffHeader)
+	s.WriteString(m.renderPanelHeader("DIFF"))
 	s.WriteString("\n")
 	s.WriteString(m.diffViewport.View())
 	s.WriteString("\n")
 
 	// Story panel header
-	storyHeader := m.renderPanelHeader("STORY", m.activePanel == PanelStory)
-	s.WriteString(storyHeader)
+	s.WriteString(m.renderPanelHeader("STORY"))
 	s.WriteString("\n")
 	s.WriteString(m.storyViewport.View())
 	s.WriteString("\n")
@@ -1040,7 +907,6 @@ func (m EvalModel) renderHelpView() string {
 	s.WriteString("\n")
 	s.WriteString(fmt.Sprintf("  %s  %s\n", keyStyle.Render("]/["), descStyle.Render("next/previous case")))
 	s.WriteString(fmt.Sprintf("  %s  %s\n", keyStyle.Render("u/U"), descStyle.Render("next/previous unjudged")))
-	s.WriteString(fmt.Sprintf("  %s  %s\n", keyStyle.Render("Tab"), descStyle.Render("toggle panel")))
 	s.WriteString("\n")
 
 	// Scrolling
@@ -1056,7 +922,6 @@ func (m EvalModel) renderHelpView() string {
 	s.WriteString("\n")
 	s.WriteString(fmt.Sprintf("  %s  %s\n", keyStyle.Render("s/S"), descStyle.Render("next/previous section")))
 	s.WriteString(fmt.Sprintf("  %s    %s\n", keyStyle.Render("m"), descStyle.Render("toggle story/raw mode")))
-	s.WriteString(fmt.Sprintf("  %s    %s\n", keyStyle.Render("z"), descStyle.Render("toggle collapsed hunks")))
 	s.WriteString("\n")
 
 	// Judgment
@@ -1071,7 +936,6 @@ func (m EvalModel) renderHelpView() string {
 	s.WriteString(headerStyle.Render("Other"))
 	s.WriteString("\n")
 	s.WriteString(fmt.Sprintf("  %s    %s\n", keyStyle.Render("y"), descStyle.Render("copy case to clipboard")))
-	s.WriteString(fmt.Sprintf("  %s    %s\n", keyStyle.Render("e"), descStyle.Render("save case to eval dataset")))
 	s.WriteString(fmt.Sprintf("  %s    %s\n", keyStyle.Render("?"), descStyle.Render("toggle help")))
 	s.WriteString(fmt.Sprintf("  %s    %s\n", keyStyle.Render("q"), descStyle.Render("quit")))
 	s.WriteString("\n\n")
@@ -1081,11 +945,8 @@ func (m EvalModel) renderHelpView() string {
 	return s.String()
 }
 
-func (m EvalModel) renderPanelHeader(name string, active bool) string {
+func (m EvalModel) renderPanelHeader(name string) string {
 	style := lipgloss.NewStyle().Bold(true)
-	if active {
-		return style.Render(fmt.Sprintf("%s [active]", name))
-	}
 	return style.Render(name)
 }
 
