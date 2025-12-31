@@ -387,9 +387,10 @@ func renderLineWithSegments(prefix string, segments []diffview.Segment, baseStyl
 	}
 
 	// Calculate current length and pad if needed
-	currentLen := lipgloss.Width(prefix)
+	// Use tab-aware width calculation since lipgloss.Width returns 0 for tabs
+	currentLen := displayWidthFrom(prefix, 0)
 	for _, seg := range segments {
-		currentLen += lipgloss.Width(seg.Text)
+		currentLen = displayWidthFrom(seg.Text, currentLen)
 	}
 
 	if currentLen < width {
@@ -451,9 +452,10 @@ func renderLineWithTokens(prefix string, tokens []diffview.Token, colors diffvie
 	}
 
 	// Calculate current length and pad if needed
-	currentLen := lipgloss.Width(prefix)
+	// Use tab-aware width calculation since lipgloss.Width returns 0 for tabs
+	currentLen := displayWidthFrom(prefix, 0)
 	for _, tok := range tokens {
-		currentLen += lipgloss.Width(tok.Text)
+		currentLen = displayWidthFrom(tok.Text, currentLen)
 	}
 
 	if currentLen < width {
@@ -548,10 +550,10 @@ func linePrefixFor(lineType diffview.LineType) string {
 }
 
 // padLine pads a line with spaces to the specified display width.
-// Uses lipgloss.Width() to correctly handle multi-byte Unicode characters.
+// Uses DisplayWidth() to correctly handle tabs and multi-byte Unicode characters.
 // If the line is already wider, it is returned unchanged.
 func padLine(line string, width int) string {
-	lineWidth := lipgloss.Width(line)
+	lineWidth := DisplayWidth(line)
 	if lineWidth >= width {
 		return line
 	}
