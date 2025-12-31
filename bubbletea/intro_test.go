@@ -148,18 +148,77 @@ func TestNarrativeDiagram_RuleInstances(t *testing.T) {
 func TestNarrativeDiagram_CorePeriphery(t *testing.T) {
 	t.Parallel()
 
-	// core-periphery narrative should NOT produce a linear diagram
-	// (it needs a hub-and-spoke diagram which is out of scope for this task)
+	// core-periphery narrative should produce a hub-and-spoke diagram
+	// with core in the center and other roles radiating from it
 	sections := []diffview.Section{
 		{Role: "core", Title: "Main Change"},
 		{Role: "supporting", Title: "Ripple Effect"},
+		{Role: "test", Title: "Verification"},
 	}
 
 	renderer := lipgloss.NewRenderer(nil, termenv.WithProfile(termenv.Ascii))
 	diagram := bubbletea.NarrativeDiagram("core-periphery", sections, renderer)
 
-	// core-periphery is NOT a linear narrative, so should return empty for now
+	// Hub-and-spoke should show core with connections to other roles
+	assert.Contains(t, diagram, "core")
+	assert.Contains(t, diagram, "supporting")
+	assert.Contains(t, diagram, "test")
+	// Should NOT have linear arrows (that's for linear narratives)
+	assert.NotContains(t, diagram, "→")
+}
+
+func TestNarrativeDiagram_CorePeriphery_SingleRole(t *testing.T) {
+	t.Parallel()
+
+	// With only core role, should still render (even if no spokes)
+	sections := []diffview.Section{
+		{Role: "core", Title: "Only Core"},
+	}
+
+	renderer := lipgloss.NewRenderer(nil, termenv.WithProfile(termenv.Ascii))
+	diagram := bubbletea.NarrativeDiagram("core-periphery", sections, renderer)
+
+	assert.Contains(t, diagram, "core")
+}
+
+func TestNarrativeDiagram_CorePeriphery_NoCore(t *testing.T) {
+	t.Parallel()
+
+	// Without core role, should return empty (can't have hub without hub)
+	sections := []diffview.Section{
+		{Role: "supporting", Title: "Support Only"},
+		{Role: "test", Title: "Test Only"},
+	}
+
+	renderer := lipgloss.NewRenderer(nil, termenv.WithProfile(termenv.Ascii))
+	diagram := bubbletea.NarrativeDiagram("core-periphery", sections, renderer)
+
+	// No core = no hub-and-spoke diagram
 	assert.Empty(t, diagram)
+}
+
+func TestNarrativeDiagram_CorePeriphery_ManyRoles(t *testing.T) {
+	t.Parallel()
+
+	// With multiple peripheral roles, all should be shown
+	sections := []diffview.Section{
+		{Role: "core", Title: "Main"},
+		{Role: "supporting", Title: "Support 1"},
+		{Role: "supporting", Title: "Support 2"},
+		{Role: "test", Title: "Tests"},
+		{Role: "cleanup", Title: "Cleanup"},
+	}
+
+	renderer := lipgloss.NewRenderer(nil, termenv.WithProfile(termenv.Ascii))
+	diagram := bubbletea.NarrativeDiagram("core-periphery", sections, renderer)
+
+	assert.Contains(t, diagram, "core")
+	assert.Contains(t, diagram, "supporting")
+	assert.Contains(t, diagram, "test")
+	assert.Contains(t, diagram, "cleanup")
+	// Roles should be deduplicated
+	count := strings.Count(diagram, "supporting")
+	assert.Equal(t, 1, count, "supporting should appear only once")
 }
 
 func TestNarrativeDiagram_NilRenderer(t *testing.T) {

@@ -15,6 +15,8 @@ func NarrativeDiagram(narrative string, sections []diffview.Section, renderer *l
 	switch narrative {
 	case "cause-effect", "entry-implementation", "before-after", "rule-instances":
 		return linearFlowDiagram(sections, renderer)
+	case "core-periphery":
+		return hubAndSpokeDiagram(sections, renderer)
 	default:
 		return ""
 	}
@@ -45,6 +47,62 @@ func linearFlowDiagram(sections []diffview.Section, renderer *lipgloss.Renderer)
 	}
 
 	return lipgloss.JoinHorizontal(lipgloss.Center, parts...)
+}
+
+// hubAndSpokeDiagram renders a hub-and-spoke diagram with core on the right.
+// Peripheral roles are shown on the left, connected to the core box.
+//
+// Example output (with rounded borders):
+//
+//	supporting ── ╭──────╮
+//	     test ──  │ core │
+//	  cleanup ──  ╰──────╯
+func hubAndSpokeDiagram(sections []diffview.Section, renderer *lipgloss.Renderer) string {
+	roles := extractRoles(sections)
+	if len(roles) == 0 {
+		return ""
+	}
+
+	// Find core role - it's the hub
+	var hasCore bool
+	var peripheralRoles []string
+	for _, role := range roles {
+		if role == "core" {
+			hasCore = true
+		} else {
+			peripheralRoles = append(peripheralRoles, role)
+		}
+	}
+
+	// No core = no hub-and-spoke diagram
+	if !hasCore {
+		return ""
+	}
+
+	nodeStyle := renderer.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		Padding(0, 1)
+
+	// Core is always centered
+	coreNode := nodeStyle.Render("core")
+
+	// If no peripheral roles, just show core
+	if len(peripheralRoles) == 0 {
+		return coreNode
+	}
+
+	// Build spoke connector
+	spoke := " ── "
+
+	// Build peripheral roles column (left side)
+	leftParts := make([]string, 0, len(peripheralRoles))
+	for _, role := range peripheralRoles {
+		leftParts = append(leftParts, role+spoke)
+	}
+	leftColumn := lipgloss.JoinVertical(lipgloss.Right, leftParts...)
+
+	// Join left spokes with core
+	return lipgloss.JoinHorizontal(lipgloss.Center, leftColumn, coreNode)
 }
 
 // extractRoles returns unique roles from sections in order.
