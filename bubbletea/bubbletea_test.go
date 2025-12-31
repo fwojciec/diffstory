@@ -32,11 +32,19 @@ func extractLastLine(s string) string {
 
 // mockTokenizer implements diffview.Tokenizer for testing.
 type mockTokenizer struct {
-	TokenizeFn func(language, source string) []diffview.Token
+	TokenizeFn      func(language, source string) []diffview.Token
+	TokenizeLinesFn func(language, source string) [][]diffview.Token
 }
 
 func (m *mockTokenizer) Tokenize(language, source string) []diffview.Token {
 	return m.TokenizeFn(language, source)
+}
+
+func (m *mockTokenizer) TokenizeLines(language, source string) [][]diffview.Token {
+	if m.TokenizeLinesFn != nil {
+		return m.TokenizeLinesFn(language, source)
+	}
+	return nil
 }
 
 // mockLanguageDetector implements diffview.LanguageDetector for testing.

@@ -17,6 +17,12 @@ type Tokenizer interface {
 	// Tokenize splits source code into syntax-highlighted tokens for the given language.
 	// Returns nil if the language is not supported.
 	Tokenize(language, source string) []Token
+
+	// TokenizeLines tokenizes multi-line source code with full context,
+	// returning tokens split by line. This correctly handles multi-line
+	// constructs like /* */ comments and JSDoc.
+	// Returns nil if the language is not supported.
+	TokenizeLines(language, source string) [][]Token
 }
 
 // LanguageDetector determines the programming language from a file path.

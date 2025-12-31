@@ -117,3 +117,137 @@ func TestTokenizer_Tokenize(t *testing.T) {
 		assert.Error(t, err)
 	})
 }
+
+func TestTokenizer_TokenizeLines(t *testing.T) {
+	t.Parallel()
+
+	t.Run("tokenizes multi-line comments correctly", func(t *testing.T) {
+		t.Parallel()
+
+		tokenizer, err := chroma.NewTokenizer(testStyleFunc())
+		require.NoError(t, err)
+
+		// Multi-line JSDoc comment - each line should be recognized as comment
+		source := "/**\n * Config options\n */"
+		lineTokens := tokenizer.TokenizeLines("javascript", source)
+
+		require.Len(t, lineTokens, 3, "should have tokens for 3 lines")
+
+		// All three lines should contain comment tokens with comment styling
+		palette := lipgloss.TestTheme().Palette()
+		expectedCommentColor := string(palette.Comment)
+
+		for lineNum, tokens := range lineTokens {
+			require.NotEmpty(t, tokens, "line %d should have tokens", lineNum)
+			// At least one token on each line should have comment color
+			var hasCommentStyle bool
+			for _, tok := range tokens {
+				if tok.Style.Foreground == expectedCommentColor {
+					hasCommentStyle = true
+					break
+				}
+			}
+			assert.True(t, hasCommentStyle,
+				"line %d should have comment styling, got tokens: %v", lineNum, tokens)
+		}
+	})
+
+	t.Run("handles single line correctly", func(t *testing.T) {
+		t.Parallel()
+
+		tokenizer, err := chroma.NewTokenizer(testStyleFunc())
+		require.NoError(t, err)
+
+		source := "const x = 1"
+		lineTokens := tokenizer.TokenizeLines("javascript", source)
+
+		require.Len(t, lineTokens, 1)
+		require.NotEmpty(t, lineTokens[0])
+
+		// Reconstruct and verify
+		var reconstructed string
+		for _, tok := range lineTokens[0] {
+			reconstructed += tok.Text
+		}
+		assert.Equal(t, "const x = 1", reconstructed)
+	})
+
+	t.Run("handles empty source", func(t *testing.T) {
+		t.Parallel()
+
+		tokenizer, err := chroma.NewTokenizer(testStyleFunc())
+		require.NoError(t, err)
+
+		lineTokens := tokenizer.TokenizeLines("go", "")
+		assert.Empty(t, lineTokens)
+	})
+
+	t.Run("returns nil for unsupported language", func(t *testing.T) {
+		t.Parallel()
+
+		tokenizer, err := chroma.NewTokenizer(testStyleFunc())
+		require.NoError(t, err)
+
+		lineTokens := tokenizer.TokenizeLines("nonexistent-language-xyz", "some code")
+		assert.Nil(t, lineTokens)
+	})
+
+	t.Run("single-line comment still works", func(t *testing.T) {
+		t.Parallel()
+
+		tokenizer, err := chroma.NewTokenizer(testStyleFunc())
+		require.NoError(t, err)
+
+		source := "// single line comment"
+		lineTokens := tokenizer.TokenizeLines("javascript", source)
+
+		require.Len(t, lineTokens, 1)
+		require.NotEmpty(t, lineTokens[0])
+
+		palette := lipgloss.TestTheme().Palette()
+		expectedCommentColor := string(palette.Comment)
+
+		var hasCommentStyle bool
+		for _, tok := range lineTokens[0] {
+			if tok.Style.Foreground == expectedCommentColor {
+				hasCommentStyle = true
+				break
+			}
+		}
+		assert.True(t, hasCommentStyle, "single-line comment should have comment styling")
+	})
+
+	t.Run("handles multi-line comment with empty lines", func(t *testing.T) {
+		t.Parallel()
+
+		tokenizer, err := chroma.NewTokenizer(testStyleFunc())
+		require.NoError(t, err)
+
+		// JSDoc-style comment with empty line (common pattern)
+		source := "/**\n * Description\n *\n * @param foo\n */"
+		lineTokens := tokenizer.TokenizeLines("javascript", source)
+
+		// Should have 5 lines
+		require.Len(t, lineTokens, 5, "should have tokens for 5 lines")
+
+		palette := lipgloss.TestTheme().Palette()
+		expectedCommentColor := string(palette.Comment)
+
+		// All lines (including the empty-content line 3) should have comment styling
+		for lineNum, tokens := range lineTokens {
+			// Line 3 (" *") may have minimal tokens but should still be comment-styled
+			if len(tokens) == 0 {
+				continue // Empty token slice is acceptable for whitespace-only lines
+			}
+			var hasCommentStyle bool
+			for _, tok := range tokens {
+				if tok.Style.Foreground == expectedCommentColor {
+					hasCommentStyle = true
+					break
+				}
+			}
+			assert.True(t, hasCommentStyle,
+				"line %d should have comment styling, got tokens: %v", lineNum, tokens)
+		}
+	})
+}
