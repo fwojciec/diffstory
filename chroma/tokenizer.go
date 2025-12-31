@@ -3,6 +3,7 @@ package chroma
 
 import (
 	"errors"
+	"strings"
 
 	chromalib "github.com/alecthomas/chroma/v2"
 	"github.com/alecthomas/chroma/v2/lexers"
@@ -142,12 +143,7 @@ func splitTokensByLine(tokens []diffview.Token) [][]diffview.Token {
 
 // containsNewline returns true if s contains a newline character.
 func containsNewline(s string) bool {
-	for _, c := range s {
-		if c == '\n' {
-			return true
-		}
-	}
-	return false
+	return strings.Contains(s, "\n")
 }
 
 // splitAtNewlines splits a string at newline boundaries, keeping the parts.
@@ -155,18 +151,5 @@ func containsNewline(s string) bool {
 // For "a\n", returns ["a", ""].
 // For "\na", returns ["", "a"].
 func splitAtNewlines(s string) []string {
-	var result []string
-	var current []byte
-
-	for i := 0; i < len(s); i++ {
-		if s[i] == '\n' {
-			result = append(result, string(current))
-			current = nil
-		} else {
-			current = append(current, s[i])
-		}
-	}
-	result = append(result, string(current))
-
-	return result
+	return strings.Split(s, "\n")
 }
