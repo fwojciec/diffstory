@@ -12,10 +12,11 @@ func DisplayWidth(s string) int {
 	return displayWidthFrom(s, 0)
 }
 
-// displayWidthFrom calculates the display width of a string starting from
-// a given column position. This is needed when calculating widths of
-// multiple strings that will be concatenated, as tab expansion depends
-// on the current column position.
+// displayWidthFrom returns the ending column position after rendering the
+// given string starting from the specified column position. The display
+// width of the string alone is (return value - startCol). This is needed
+// when calculating widths of multiple strings that will be concatenated,
+// as tab expansion depends on the current column position.
 func displayWidthFrom(s string, startCol int) int {
 	col := startCol
 	for _, r := range s {
