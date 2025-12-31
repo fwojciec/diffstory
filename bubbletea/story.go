@@ -326,18 +326,32 @@ func (m StoryModel) renderIntro() string {
 	hasSummary := m.story != nil && m.story.Summary != ""
 	hasSections := m.story != nil && len(m.story.Sections) > 0
 
-	// Summary
+	// Summary with change type prefix
 	if hasSummary {
 		b.WriteString("\n")
+		if m.story.ChangeType != "" {
+			fmt.Fprintf(&b, "[%s] ", m.story.ChangeType)
+		}
 		b.WriteString(m.story.Summary)
 		b.WriteString("\n")
+	}
+
+	// Narrative explanation
+	if m.story != nil && m.story.Narrative != "" {
+		if explanation := narrativeExplanation(m.story.Narrative); explanation != "" {
+			fmt.Fprintf(&b, "\nStory: %s\n", explanation)
+		}
 	}
 
 	// Section list
 	if hasSections {
 		b.WriteString("\nSections:\n")
 		for i, section := range m.story.Sections {
-			fmt.Fprintf(&b, "  %d. %s\n", i+1, section.Title)
+			if section.Role != "" {
+				fmt.Fprintf(&b, "  %d. [%s] %s\n", i+1, section.Role, section.Title)
+			} else {
+				fmt.Fprintf(&b, "  %d. %s\n", i+1, section.Title)
+			}
 		}
 	}
 
@@ -679,4 +693,22 @@ func (m StoryModel) currentSection() (current, total int, title string) {
 	}
 
 	return current, total, title
+}
+
+// narrativeExplanation returns a human-readable explanation of the narrative pattern.
+func narrativeExplanation(narrative string) string {
+	switch narrative {
+	case "cause-effect":
+		return "problem → fix → proof"
+	case "core-periphery":
+		return "core change → ripple effects"
+	case "before-after":
+		return "old pattern → new pattern"
+	case "entry-implementation":
+		return "contract → implementation"
+	case "rule-instances":
+		return "pattern → applications"
+	default:
+		return ""
+	}
 }
