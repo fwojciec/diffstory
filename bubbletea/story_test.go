@@ -1171,3 +1171,273 @@ func TestStoryModel_FilteredDiffUsesOriginalHunkIndices(t *testing.T) {
 	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
 	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
 }
+
+func TestStoryModel_IntroSlide_ShowsChangeTypePrefix(t *testing.T) {
+	t.Parallel()
+
+	diff := &diffview.Diff{
+		Files: []diffview.FileDiff{
+			{
+				NewPath:   "b/file.go",
+				Operation: diffview.FileModified,
+				Hunks: []diffview.Hunk{
+					{
+						OldStart: 1, OldCount: 1, NewStart: 1, NewCount: 1,
+						Lines: []diffview.Line{
+							{Type: diffview.LineContext, Content: "content"},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	story := &diffview.StoryClassification{
+		ChangeType: "bugfix",
+		Summary:    "Fix null pointer exception in handler",
+		Sections: []diffview.Section{
+			{
+				Role:  "fix",
+				Title: "The Fix",
+				Hunks: []diffview.HunkRef{
+					{File: "file.go", HunkIndex: 0, Category: "core"},
+				},
+			},
+		},
+	}
+
+	m := bubbletea.NewStoryModel(diff, story, bubbletea.WithIntroSlide())
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(80, 24),
+	)
+
+	// Should show summary with [bugfix] prefix
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("[bugfix]")) &&
+			bytes.Contains(out, []byte("Fix null pointer exception in handler"))
+	})
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}
+
+func TestStoryModel_IntroSlide_ShowsNarrativeExplanation(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		narrative string
+		expected  string
+	}{
+		{
+			name:      "cause-effect narrative",
+			narrative: "cause-effect",
+			expected:  "problem → fix → proof",
+		},
+		{
+			name:      "core-periphery narrative",
+			narrative: "core-periphery",
+			expected:  "core change → ripple effects",
+		},
+		{
+			name:      "before-after narrative",
+			narrative: "before-after",
+			expected:  "old pattern → new pattern",
+		},
+		{
+			name:      "entry-implementation narrative",
+			narrative: "entry-implementation",
+			expected:  "contract → implementation",
+		},
+		{
+			name:      "rule-instances narrative",
+			narrative: "rule-instances",
+			expected:  "pattern → applications",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			diff := &diffview.Diff{
+				Files: []diffview.FileDiff{
+					{
+						NewPath:   "b/file.go",
+						Operation: diffview.FileModified,
+						Hunks: []diffview.Hunk{
+							{
+								OldStart: 1, OldCount: 1, NewStart: 1, NewCount: 1,
+								Lines: []diffview.Line{
+									{Type: diffview.LineContext, Content: "content"},
+								},
+							},
+						},
+					},
+				},
+			}
+
+			story := &diffview.StoryClassification{
+				ChangeType: "feature",
+				Narrative:  tt.narrative,
+				Summary:    "Test summary",
+				Sections: []diffview.Section{
+					{
+						Role:  "core",
+						Title: "Core Changes",
+						Hunks: []diffview.HunkRef{
+							{File: "file.go", HunkIndex: 0, Category: "core"},
+						},
+					},
+				},
+			}
+
+			m := bubbletea.NewStoryModel(diff, story, bubbletea.WithIntroSlide())
+			tm := teatest.NewTestModel(t, m,
+				teatest.WithInitialTermSize(80, 24),
+			)
+
+			// Should show narrative explanation
+			teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+				return bytes.Contains(out, []byte(tt.expected))
+			})
+
+			tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+			tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+		})
+	}
+}
+
+func TestStoryModel_IntroSlide_ShowsSectionRolePrefixes(t *testing.T) {
+	t.Parallel()
+
+	diff := &diffview.Diff{
+		Files: []diffview.FileDiff{
+			{
+				NewPath:   "b/file.go",
+				Operation: diffview.FileModified,
+				Hunks: []diffview.Hunk{
+					{
+						OldStart: 1, OldCount: 1, NewStart: 1, NewCount: 1,
+						Lines: []diffview.Line{
+							{Type: diffview.LineContext, Content: "content1"},
+						},
+					},
+					{
+						OldStart: 10, OldCount: 1, NewStart: 10, NewCount: 1,
+						Lines: []diffview.Line{
+							{Type: diffview.LineContext, Content: "content2"},
+						},
+					},
+					{
+						OldStart: 20, OldCount: 1, NewStart: 20, NewCount: 1,
+						Lines: []diffview.Line{
+							{Type: diffview.LineContext, Content: "content3"},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	story := &diffview.StoryClassification{
+		ChangeType: "bugfix",
+		Narrative:  "cause-effect",
+		Summary:    "Fix crash on empty input",
+		Sections: []diffview.Section{
+			{
+				Role:  "problem",
+				Title: "The Bug Location",
+				Hunks: []diffview.HunkRef{
+					{File: "file.go", HunkIndex: 0, Category: "core"},
+				},
+			},
+			{
+				Role:  "fix",
+				Title: "The Fix",
+				Hunks: []diffview.HunkRef{
+					{File: "file.go", HunkIndex: 1, Category: "core"},
+				},
+			},
+			{
+				Role:  "test",
+				Title: "Tests",
+				Hunks: []diffview.HunkRef{
+					{File: "file.go", HunkIndex: 2, Category: "core"},
+				},
+			},
+		},
+	}
+
+	m := bubbletea.NewStoryModel(diff, story, bubbletea.WithIntroSlide())
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(80, 24),
+	)
+
+	// Should show section list with [role] prefixes
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		hasProblem := bytes.Contains(out, []byte("[problem]")) &&
+			bytes.Contains(out, []byte("The Bug Location"))
+		hasFix := bytes.Contains(out, []byte("[fix]")) &&
+			bytes.Contains(out, []byte("The Fix"))
+		hasTest := bytes.Contains(out, []byte("[test]")) &&
+			bytes.Contains(out, []byte("Tests"))
+		return hasProblem && hasFix && hasTest
+	})
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}
+
+func TestStoryModel_IntroSlide_UnknownNarrativeFallback(t *testing.T) {
+	t.Parallel()
+
+	diff := &diffview.Diff{
+		Files: []diffview.FileDiff{
+			{
+				NewPath:   "b/file.go",
+				Operation: diffview.FileModified,
+				Hunks: []diffview.Hunk{
+					{
+						OldStart: 1, OldCount: 1, NewStart: 1, NewCount: 1,
+						Lines: []diffview.Line{
+							{Type: diffview.LineContext, Content: "content"},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	story := &diffview.StoryClassification{
+		ChangeType: "feature",
+		Narrative:  "unknown-narrative-type",
+		Summary:    "Some feature implementation",
+		Sections: []diffview.Section{
+			{
+				Role:  "core",
+				Title: "The Feature",
+				Hunks: []diffview.HunkRef{
+					{File: "file.go", HunkIndex: 0, Category: "core"},
+				},
+			},
+		},
+	}
+
+	m := bubbletea.NewStoryModel(diff, story, bubbletea.WithIntroSlide())
+	tm := teatest.NewTestModel(t, m,
+		teatest.WithInitialTermSize(80, 24),
+	)
+
+	// Should show summary and sections but NO "Story:" line for unknown narrative
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		hasSummary := bytes.Contains(out, []byte("[feature]")) &&
+			bytes.Contains(out, []byte("Some feature implementation"))
+		hasSections := bytes.Contains(out, []byte("Sections:"))
+		noStoryLine := !bytes.Contains(out, []byte("Story:"))
+		return hasSummary && hasSections && noStoryLine
+	})
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(0))
+}
