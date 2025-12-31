@@ -803,26 +803,25 @@ func TestModel_AppliesSyntaxHighlighting(t *testing.T) {
 
 	// Create a mock tokenizer that returns tokens with keyword style
 	tokenizer := &mockTokenizer{
-		TokenizeFn: func(language, source string) []diffview.Token {
+		TokenizeLinesFn: func(language, source string) [][]diffview.Token {
 			if language != "Go" {
 				return nil
 			}
-			// For "package main" return two tokens
-			if source == "package main" {
-				return []diffview.Token{
-					{Text: "package", Style: diffview.Style{Foreground: "#ff00ff", Bold: true}},
-					{Text: " ", Style: diffview.Style{}},
-					{Text: "main", Style: diffview.Style{}},
-				}
-			}
-			// For "func main() {}" return tokens
-			if source == "func main() {}" {
-				return []diffview.Token{
-					{Text: "func", Style: diffview.Style{Foreground: "#ff00ff", Bold: true}},
-					{Text: " ", Style: diffview.Style{}},
-					{Text: "main", Style: diffview.Style{Foreground: "#0000ff"}},
-					{Text: "()", Style: diffview.Style{}},
-					{Text: " {}", Style: diffview.Style{}},
+			// For "package main\nfunc main() {}" return tokens for both lines
+			if source == "package main\nfunc main() {}" {
+				return [][]diffview.Token{
+					{
+						{Text: "package", Style: diffview.Style{Foreground: "#ff00ff", Bold: true}},
+						{Text: " ", Style: diffview.Style{}},
+						{Text: "main", Style: diffview.Style{}},
+					},
+					{
+						{Text: "func", Style: diffview.Style{Foreground: "#ff00ff", Bold: true}},
+						{Text: " ", Style: diffview.Style{}},
+						{Text: "main", Style: diffview.Style{Foreground: "#0000ff"}},
+						{Text: "()", Style: diffview.Style{}},
+						{Text: " {}", Style: diffview.Style{}},
+					},
 				}
 			}
 			return nil

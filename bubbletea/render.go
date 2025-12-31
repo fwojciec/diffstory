@@ -152,6 +152,10 @@ func renderDiff(cfg renderConfig) string {
 			// Compute word diff segments for paired lines (delete followed by add)
 			lineSegments := computeLinePairSegments(hunk.Lines, cfg.wordDiffer)
 
+			// Pre-tokenize all lines in the hunk together for proper multi-line construct handling
+			// (e.g., /* */ comments, JSDoc). This gives each line correct context-aware tokens.
+			hunkTokens := tokenizeHunkLines(hunk.Lines, language, cfg.tokenizer)
+
 			// Render lines with gutter and prefixes
 			for i, line := range hunk.Lines {
 				// Line number gutter with diff-aware styling
@@ -189,10 +193,10 @@ func renderDiff(cfg renderConfig) string {
 					// Render with word-level highlighting
 					styledLine = renderLineWithSegments(prefix, segments, lineStyle, highlightStyle, width)
 				} else {
-					// Try to tokenize for syntax highlighting
+					// Use pre-computed tokens from hunk-level tokenization
 					var tokens []diffview.Token
-					if cfg.tokenizer != nil && language != "" {
-						tokens = cfg.tokenizer.Tokenize(language, lineContent)
+					if hunkTokens != nil && i < len(hunkTokens) {
+						tokens = hunkTokens[i]
 					}
 
 					if tokens != nil {
@@ -642,4 +646,51 @@ func computePositions(diff *diffview.Diff) (hunkPositions, filePositions []int) 
 		}
 	}
 	return hunkPositions, filePositions
+}
+
+// maxHunkSizeForTokenization is the maximum total size (in bytes) of hunk content
+// that we'll attempt to tokenize. Real code with multi-line comments is small;
+// larger hunks are likely data files or minified code where syntax highlighting
+// provides little value.
+const maxHunkSizeForTokenization = 16 * 1024 // 16KB
+
+// maxLineLength is the maximum length of a single line we'll include in
+// hunk-level tokenization. Lines longer than this are likely data, not code.
+const maxLineLength = 1000
+
+// tokenizeHunkLines tokenizes all lines in a hunk together with full context,
+// returning per-line tokens. This correctly handles multi-line constructs like
+// /* */ comments and JSDoc that span multiple lines.
+// Returns nil if tokenizer is nil, language is empty, language is unsupported,
+// or hunk content exceeds size limits (likely not normal code).
+func tokenizeHunkLines(lines []diffview.Line, language string, tokenizer diffview.Tokenizer) [][]diffview.Token {
+	if tokenizer == nil || language == "" || len(lines) == 0 {
+		return nil
+	}
+
+	// Pre-check total size to avoid allocations for large hunks
+	totalSize := 0
+	for _, line := range lines {
+		lineLen := len(line.Content)
+		if lineLen > maxLineLength {
+			return nil // Long line suggests data file, not code
+		}
+		totalSize += lineLen
+		if totalSize > maxHunkSizeForTokenization {
+			return nil
+		}
+	}
+
+	// Build the full hunk content by joining all line contents
+	var sb strings.Builder
+	sb.Grow(totalSize) // Pre-allocate to avoid reallocations
+	for i, line := range lines {
+		content := strings.TrimSuffix(line.Content, "\n")
+		sb.WriteString(content)
+		if i < len(lines)-1 {
+			sb.WriteString("\n")
+		}
+	}
+
+	return tokenizer.TokenizeLines(language, sb.String())
 }

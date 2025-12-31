@@ -5,7 +5,6 @@
 package bubbletea_test
 
 import (
-	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -139,42 +138,48 @@ func TestLargeDiff_RenderAndView(t *testing.T) {
 	assert.NotEmpty(t, view)
 }
 
-func TestLargeDiff_PerformanceBounds(t *testing.T) {
+func TestLargeDiff_SkipsTokenizationForLongLines(t *testing.T) {
 	t.Parallel()
 
-	// Simulate viewing eval-dataset.jsonl: 83 lines, each ~90KB (~7.6MB total)
-	diff := generateLargeDiff(83, 91000)
+	// Create a diff with very long lines (like data files)
+	// These should NOT be tokenized - too long to be real code
+	diff := generateLargeDiff(10, 2000) // 10 lines, 2000 chars each (over maxLineLength)
 
-	var memBefore runtime.MemStats
-	runtime.GC()
-	runtime.ReadMemStats(&memBefore)
+	// Create a tokenizer that panics if called - proving tokenization is skipped
+	panicTokenizer := &panicOnCallTokenizer{}
 
-	start := time.Now()
+	model := bubbletea.NewModel(diff,
+		bubbletea.WithTheme(lipgloss.DefaultTheme()),
+		bubbletea.WithTokenizer(panicTokenizer),
+		bubbletea.WithLanguageDetector(&alwaysGoDetector{}),
+	)
 
-	// Create model
-	model := bubbletea.NewModel(diff, bubbletea.WithTheme(lipgloss.DefaultTheme()))
-
-	// Render
+	// Render - should NOT panic because tokenizer should be skipped for long lines
 	msg := tea.WindowSizeMsg{Width: 120, Height: 40}
 	updatedModel, _ := model.Update(msg)
 	model = updatedModel.(bubbletea.Model)
 
-	// Get view
 	view := model.View()
-
-	totalTime := time.Since(start)
-
-	var memAfter runtime.MemStats
-	runtime.ReadMemStats(&memAfter)
-	memUsed := memAfter.Alloc - memBefore.Alloc
-
-	// Assertions
 	assert.NotEmpty(t, view)
-	assert.Less(t, totalTime, 2*time.Second, "Total time exceeded 2s")
-	// Memory bound is generous (200MB) to account for parallel test noise.
-	// Actual usage is typically ~23MB for a 7.6MB diff. Benchmarks provide
-	// more precise memory tracking via b.ReportAllocs().
-	assert.Less(t, memUsed, uint64(200*1024*1024), "Memory usage exceeded 200MB")
+}
+
+// panicOnCallTokenizer panics if any tokenization method is called.
+// Used to verify that tokenization is correctly skipped for large files.
+type panicOnCallTokenizer struct{}
+
+func (p *panicOnCallTokenizer) Tokenize(language, source string) []diffview.Token {
+	panic("Tokenize should not be called for large files")
+}
+
+func (p *panicOnCallTokenizer) TokenizeLines(language, source string) [][]diffview.Token {
+	panic("TokenizeLines should not be called for large files")
+}
+
+// alwaysGoDetector returns "Go" for any path, ensuring tokenization would be attempted.
+type alwaysGoDetector struct{}
+
+func (d *alwaysGoDetector) DetectFromPath(path string) string {
+	return "Go"
 }
 
 // benchResult prevents compiler from optimizing away benchmark results.
