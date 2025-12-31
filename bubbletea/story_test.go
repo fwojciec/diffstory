@@ -1241,12 +1241,14 @@ func TestStoryModel_IntroSlide_ShowsNarrativeDiagram(t *testing.T) {
 			expected: []string{"problem", "fix", "test", "→"},
 		},
 		{
-			name:      "core-periphery shows text explanation",
+			name:      "core-periphery shows hub-and-spoke diagram",
 			narrative: "core-periphery",
 			sections: []diffview.Section{
 				{Role: "core", Title: "Core", Hunks: []diffview.HunkRef{{File: "file.go", HunkIndex: 0}}},
+				{Role: "supporting", Title: "Support", Hunks: []diffview.HunkRef{{File: "file.go", HunkIndex: 0}}},
 			},
-			expected: []string{"core change → ripple effects"},
+			// Hub-and-spoke shows core and peripheral roles (no linear arrows)
+			expected: []string{"core", "supporting"},
 		},
 		{
 			name:      "before-after shows role diagram",
