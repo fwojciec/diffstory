@@ -7,9 +7,14 @@ import (
 
 // NarrativeDiagram returns a visual representation of the story's narrative flow.
 // The diagram adapts to the roles present in the sections.
+// If renderer is nil, a default renderer is used.
 func NarrativeDiagram(narrative string, sections []diffview.Section, renderer *lipgloss.Renderer) string {
-	if len(sections) == 0 || renderer == nil {
+	if len(sections) == 0 {
 		return ""
+	}
+	// Use default renderer if nil (same pattern as newStyle in story.go)
+	if renderer == nil {
+		renderer = lipgloss.DefaultRenderer()
 	}
 
 	switch narrative {

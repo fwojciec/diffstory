@@ -230,6 +230,6 @@ func TestNarrativeDiagram_NilRenderer(t *testing.T) {
 
 	diagram := bubbletea.NarrativeDiagram("cause-effect", sections, nil)
 
-	// Should return empty string when renderer is nil
-	assert.Empty(t, diagram)
+	// Should use default renderer when nil is passed
+	assert.Contains(t, diagram, "fix")
 }
