@@ -234,26 +234,174 @@ func TestNarrativeDiagram_NilRenderer(t *testing.T) {
 	assert.Contains(t, diagram, "fix")
 }
 
-func TestNarrativeDiagram_CorePeriphery_CoreAppearsFirst(t *testing.T) {
+func TestNarrativeDiagram_CorePeriphery_OnePeripheral_CoreAppearsFirst(t *testing.T) {
 	t.Parallel()
 
-	// Core is section 1, so it should appear on the LEFT (first in reading order)
-	// to match the section sequence: 1. core, 2. test, 3. supporting
+	// With only 1 peripheral role, use right-only layout
+	// Core should appear before the peripheral role (left-to-right reading order)
 	sections := []diffview.Section{
 		{Role: "core", Title: "Main Change"},
 		{Role: "test", Title: "Verification"},
-		{Role: "supporting", Title: "Ripple Effect"},
 	}
 
 	renderer := lipgloss.NewRenderer(nil, termenv.WithProfile(termenv.Ascii))
 	diagram := bubbletea.NarrativeDiagram("core-periphery", sections, renderer)
 
-	// Core should appear before peripheral roles in the string
-	// (i.e., core is on the left side of the diagram)
+	// In right-only layout, core appears before peripheral roles
 	corePos := strings.Index(diagram, "core")
 	testPos := strings.Index(diagram, "test")
-	supportingPos := strings.Index(diagram, "supporting")
 
-	assert.Less(t, corePos, testPos, "core should appear before test in diagram")
-	assert.Less(t, corePos, supportingPos, "core should appear before supporting in diagram")
+	assert.Less(t, corePos, testPos, "core should appear before test in right-only layout")
+}
+
+func TestNarrativeDiagram_CorePeriphery_TwoPeripheral_LeftAndRight(t *testing.T) {
+	t.Parallel()
+
+	// With 2 peripheral roles, they should appear on left and right of core
+	// Order: right first, then left (so test=right, supporting=left)
+	sections := []diffview.Section{
+		{Role: "core", Title: "Main Change"},
+		{Role: "test", Title: "Verification"},
+		{Role: "supporting", Title: "Support"},
+	}
+
+	renderer := lipgloss.NewRenderer(nil, termenv.WithProfile(termenv.Ascii))
+	diagram := bubbletea.NarrativeDiagram("core-periphery", sections, renderer)
+
+	// All roles should be present
+	assert.Contains(t, diagram, "core")
+	assert.Contains(t, diagram, "test")
+	assert.Contains(t, diagram, "supporting")
+
+	// Layout should be: supporting --[core]-- test
+	// So supporting appears before core, and test appears after core
+	lines := strings.Split(diagram, "\n")
+	var coreLineIdx int
+	for i, line := range lines {
+		if strings.Contains(line, "core") {
+			coreLineIdx = i
+			break
+		}
+	}
+
+	// The core line should have both left and right spokes
+	coreLine := lines[coreLineIdx]
+	corePos := strings.Index(coreLine, "core")
+	supportingPos := strings.Index(coreLine, "supporting")
+	testPos := strings.Index(coreLine, "test")
+
+	// supporting should be on the left (before core)
+	assert.Greater(t, corePos, supportingPos, "supporting should appear left of core")
+	// test should be on the right (after core)
+	assert.Less(t, corePos, testPos, "test should appear right of core")
+}
+
+func TestNarrativeDiagram_CorePeriphery_ThreePeripheral_LeftRightTop(t *testing.T) {
+	t.Parallel()
+
+	// With 3 peripheral roles: right, left, top
+	// Order: test=right, supporting=left, cleanup=top
+	sections := []diffview.Section{
+		{Role: "core", Title: "Main Change"},
+		{Role: "test", Title: "Verification"},
+		{Role: "supporting", Title: "Support"},
+		{Role: "cleanup", Title: "Cleanup"},
+	}
+
+	renderer := lipgloss.NewRenderer(nil, termenv.WithProfile(termenv.Ascii))
+	diagram := bubbletea.NarrativeDiagram("core-periphery", sections, renderer)
+
+	// All roles should be present
+	assert.Contains(t, diagram, "core")
+	assert.Contains(t, diagram, "test")
+	assert.Contains(t, diagram, "supporting")
+	assert.Contains(t, diagram, "cleanup")
+
+	// Should have vertical connector for top spoke
+	assert.Contains(t, diagram, "|", "should have vertical connector")
+
+	// cleanup (top) should appear before core in the output (higher line number)
+	cleanupPos := strings.Index(diagram, "cleanup")
+	corePos := strings.Index(diagram, "core")
+	assert.Less(t, cleanupPos, corePos, "cleanup (top) should appear before core in output")
+}
+
+func TestNarrativeDiagram_CorePeriphery_FourPeripheral_AllCardinal(t *testing.T) {
+	t.Parallel()
+
+	// With 4 peripheral roles: right, left, top, bottom
+	sections := []diffview.Section{
+		{Role: "core", Title: "Main Change"},
+		{Role: "test", Title: "Verification"},
+		{Role: "supporting", Title: "Support"},
+		{Role: "cleanup", Title: "Cleanup"},
+		{Role: "infra", Title: "Infrastructure"},
+	}
+
+	renderer := lipgloss.NewRenderer(nil, termenv.WithProfile(termenv.Ascii))
+	diagram := bubbletea.NarrativeDiagram("core-periphery", sections, renderer)
+
+	// All roles should be present
+	assert.Contains(t, diagram, "core")
+	assert.Contains(t, diagram, "test")
+	assert.Contains(t, diagram, "supporting")
+	assert.Contains(t, diagram, "cleanup")
+	assert.Contains(t, diagram, "infra")
+
+	// Should have vertical connectors for top and bottom spokes
+	assert.Contains(t, diagram, "|", "should have vertical connectors")
+
+	// Verify vertical positions:
+	// - cleanup (top) should appear before core
+	// - infra (bottom) should appear after core
+	cleanupPos := strings.Index(diagram, "cleanup")
+	corePos := strings.Index(diagram, "core")
+	infraPos := strings.Index(diagram, "infra")
+
+	assert.Less(t, cleanupPos, corePos, "cleanup (top) should appear before core")
+	assert.Greater(t, infraPos, corePos, "infra (bottom) should appear after core")
+}
+
+func TestNarrativeDiagram_CorePeriphery_FivePeripheral_FallsBackToRightOnly(t *testing.T) {
+	t.Parallel()
+
+	// With 5+ peripheral roles, fall back to simple right-only layout
+	sections := []diffview.Section{
+		{Role: "core", Title: "Main Change"},
+		{Role: "test", Title: "Test"},
+		{Role: "supporting", Title: "Support"},
+		{Role: "cleanup", Title: "Cleanup"},
+		{Role: "infra", Title: "Infrastructure"},
+		{Role: "docs", Title: "Documentation"},
+	}
+
+	renderer := lipgloss.NewRenderer(nil, termenv.WithProfile(termenv.Ascii))
+	diagram := bubbletea.NarrativeDiagram("core-periphery", sections, renderer)
+
+	// All roles should be present
+	assert.Contains(t, diagram, "core")
+	assert.Contains(t, diagram, "test")
+	assert.Contains(t, diagram, "supporting")
+	assert.Contains(t, diagram, "cleanup")
+	assert.Contains(t, diagram, "infra")
+	assert.Contains(t, diagram, "docs")
+
+	// In right-only layout, horizontal spoke connector appears (pointing right)
+	// and no vertical connector (no top/bottom)
+	assert.Contains(t, diagram, "──", "should have horizontal spoke connectors")
+
+	// Find the line with core - peripheral roles should be on right side
+	lines := strings.Split(diagram, "\n")
+	for _, line := range lines {
+		if strings.Contains(line, "core") {
+			// Core line shouldn't have peripheral roles to its left
+			// (no "role ──" pattern before core)
+			coreIdx := strings.Index(line, "core")
+			leftPart := line[:coreIdx]
+			// Left part should only contain box drawing characters and spaces
+			assert.NotContains(t, leftPart, "test", "test should not be left of core")
+			assert.NotContains(t, leftPart, "supporting", "supporting should not be left of core")
+			break
+		}
+	}
 }
